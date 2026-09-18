@@ -1,0 +1,114 @@
+//! The `pie` binary: load the model, start the engine, and run N copies of
+//! an inferlet at once (fixed at launch for now), printing each one's output.
+
+mod engine;
+mod host;
+mod model;
+
+use anyhow::{Context, Result};
+use candle_core::{DType, Device};
+use candle_nn::VarBuilder;
+use clap::Parser;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::Instant;
+
+/// Parse args.
+#[derive(Parser)]
+struct Args {
+    /// Path to the inferlet (.wasm component).
+    inferlet: String,
+    /// Hugging Face model id or local directory.
+    #[arg(long, default_value = "Qwen/Qwen3-0.6B")]
+    model: String,
+    /// How many copies of the inferlet to run at once.
+    #[arg(short, long, default_value_t = 1)]
+    instances: usize,
+    #[arg(long, default_value_t = 1024)]
+    kv_pages: u32, // configured based on your PC
+    #[arg(long, default_value_t = 16)]
+    page_size: usize,
+    #[arg(long)]
+    cpu: bool,
+    /// Arguments passed to the inferlet.
+    #[arg(last = true)]
+    args: Vec<String>,
+    // passed via `--`
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let args = Args::parse();
+    let device = if args.cpu {
+        Device::Cpu
+    } else {
+        Device::metal_if_available(0)?
+    };
+    let dtype = if device.is_cpu() { DType::F32 } else { DType::BF16 };
+
+    let file = |name: &str| -> Result<PathBuf> {
+        let local = PathBuf::from(&args.model).join(name);
+        if local.exists() {
+            return Ok(local);
+        }
+        let repo = hf_hub::api::sync::Api::new()?.model(args.model.clone());
+        repo.get(name)
+            .with_context(|| format!("fetching {name} from {}", args.model))
+    };
+    let json = |name: &str| -> Result<serde_json::Value> { Ok(serde_json::from_slice(&std::fs::read(file(name)?)?)?) };
+
+    let config = json("config.json")?;
+    let weights = match file("model.safetensors.index.json") {
+        Ok(_) => {
+            let index = json("model.safetensors.index.json")?;
+            let mut shards: Vec<String> = index["weight_map"]
+                .as_object()
+                .context("weight_map")?
+                .values()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect();
+            shards.sort();
+            shards.dedup();
+            shards.iter().map(|s| file(s)).collect::<Result<Vec<_>>>()?
+        }
+        Err(_) => vec![file("model.safetensors")?],
+    };
+    let tokenizer = tokenizers::Tokenizer::from_file(file("tokenizer.json")?).map_err(anyhow::Error::msg)?;
+    let eos_value = json("generation_config.json")
+        .map(|g| g["eos_token_id"].clone())
+        .unwrap_or(config["eos_token_id"].clone());
+    let eos: Vec<u32> = match &eos_value {
+        serde_json::Value::Array(a) => a.iter().filter_map(|v| v.as_u64()).map(|v| v as u32).collect(),
+        v => v.as_u64().map(|v| v as u32).into_iter().collect(),
+    };
+
+    let t = Instant::now();
+    let vb = unsafe { VarBuilder::from_mmaped_safetensors(&weights, dtype, &device)? };
+    let model = model::Model::load(
+        &serde_json::from_value(config)?,
+        vb,
+        args.kv_pages as usize,
+        args.page_size,
+    )?;
+    eprintln!("loaded {} on {:?} in {:.1?}", args.model, device, t.elapsed());
+
+    let engine = Arc::new(engine::Engine::new(model, tokenizer, eos, args.kv_pages));
+    let host = Arc::new(host::Host::new(engine)?);
+    let component = host.load(&args.inferlet)?;
+
+    let t = Instant::now();
+    let runs: Vec<_> = (0..args.instances)
+        .map(|_| {
+            let (host, component, args) = (host.clone(), component.clone(), args.args.clone());
+            tokio::spawn(async move { host.run(&component, args).await })
+        })
+        .collect();
+    for (i, run) in runs.into_iter().enumerate() {
+        match run.await?? {
+            Ok(out) => println!("[{i}] {out}"),
+            Err(e) => println!("[{i}] error: {e}"),
+        }
+    }
+    eprintln!("{} run(s) in {:.1?}", args.instances, t.elapsed());
+    Ok(())
+}

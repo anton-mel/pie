@@ -1,0 +1,52 @@
+package pie:core@0.1.0;
+
+// Inferlets (WebAssembly modules) has the following runtime API:
+
+interface model {
+
+    /// The inferlet uses it to allocate pages and compute positions.
+    kv-page-size: func() -> u32;
+
+    // The pages belong to this inferlet until it frees / exits.
+    alloc-pages: func(n: u32) -> result<list<u32>, string>;
+    /// Return pages to the runtime's shared pool.
+    free-pages: func(pages: list<u32>);
+
+    /// Turn text into token ids.
+    tokenize: func(text: string) -> list<u32>;
+    /// Turn token ids back into text.
+    detokenize: func(tokens: list<u32>) -> string;
+    /// The model's end-of-sequence tokens.
+    eos-tokens: func() -> list<u32>;
+
+    record distribution {
+        ids: list<u32>,
+        probs: list<f32>,
+    }
+
+    /// Run new tokens through the model. The runtime queues the call, batches
+    /// it with calls from all other inferlets, and runs one model step.
+    ///
+    /// Example, page size 16, 5 tokens already cached, 3 new ones:
+    ///   forward(pages: [7], last-page-len: 8, tokens: [a, b, c],
+    ///           positions: [5, 6, 7], top-k: 1)
+    forward: func(
+        pages: list<u32>,
+        last-page-len: u32,
+        tokens: list<u32>,
+        positions: list<u32>,
+        top-k: u32,
+    ) -> result<distribution, string>;
+}
+
+/// The inferlet's entry point.
+interface run {
+    /// Input: tokens, number of tokens to generate, and top-k for sampling.
+    run: func(args: list<string>) -> result<string, string>;
+}
+
+
+world inferlet {
+    import model;
+    export run;
+}

@@ -1,0 +1,7 @@
+[package]
+name = "inferlet"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+wit-bindgen = "0.59"
