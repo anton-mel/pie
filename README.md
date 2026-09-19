@@ -39,3 +39,10 @@ feature, and explains in its README.
 10. **Constrained decoding** ([`feat/constrained-decoding`](../../tree/feat/constrained-decoding)):
     `forward` can restrict which tokens may come next. The inferlet decides
     at each step, so the answer is always one of a list of choices.
+11. **Chat** ([`feat/chat`](../../tree/feat/chat)): the host gives the
+    model's chat format, so an inferlet holds a conversation without knowing
+    how the model spells its turns. The model's thinking is kept out of the
+    history.
+12. **Server and client** ([`feat/server`](../../tree/feat/server)): `pie
+    --serve` runs inferlets that clients send over the network and talks to
+    them while they run. Answers stream back as they are generated.
