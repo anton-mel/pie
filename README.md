@@ -104,3 +104,6 @@ feature, and explains in its README.
 29. **Tools and reasoning** ([`feat/tools-reasoning`](../../tree/feat/tools-reasoning)):
     tools are offered in the model's own format, and decoders spot its
     thinking and tool calls as tokens come; an agent inferlet runs the tools.
+30. **Python SDK** ([`feat/python-sdk`](../../tree/feat/python-sdk)):
+    inferlets written in Python, bundled with componentize-py into the same
+    kind of component; the runtime runs them unchanged.
