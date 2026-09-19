@@ -1,4 +1,4 @@
-# Pie Tutorial
+# Pie Tutorial: Inferlets
 
 A minimal rebuild of [Pie](https://github.com/pie-project/pie) (SOSP'25), one
 commit per chapter. Each commit adds one feature and explains how it fits in.
