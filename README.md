@@ -13,9 +13,8 @@ shares its pages from then on. The same holds for an agent that branches:
 each branch reuses the shared context instead of recomputing it, which saves
 both compute and memory.
 
-> [!WARNING] One limitation is visible here: an inferlet calls `forward` for one beam at a
-> time, so its beams are not batched with each other, only with other
-> inferlets. The next chapter fixes that.
+> [!WARNING]
+> One limitation is visible here: an inferlet calls `forward` for one beam at a time, so its beams are not batched with each other, only with other inferlets. The next chapter fixes that.
 
 ## Read Order
 
