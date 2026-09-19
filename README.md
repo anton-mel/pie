@@ -1,47 +1,45 @@
-# Chapter #20: Prefix Trie
+# Chapter #21: Pipelines
 
-Until chapter 19, inferlets could share a prompt only through the index of
-chapter 9: one publishes under a key, the others open that key. They had to
-agree on the key, and the shared text had to be the whole key's text.
+Until chapter 20, the order work ran in was implicit: the scheduler kept a
+forward behind an earlier one whenever it read pages the earlier one still
+had to write. That is correct, but it guesses at what depends on what, and
+the inferlet has no say in it.
 
-In chapter 20 prompts are shared by their tokens, as in the reference and in
-vLLM. Every full page of KV is recorded under a chain hash: the hash of its
-tokens together with the chain hash of the page before it
-(`crates/runtime/src/store.rs`). Two sequences that start with the same
-tokens get the same chain, like two paths through a trie that share their
-start. `from-prefix` (`wit/working-set.wit`) returns a working set holding
-the longest recorded prefix of a list of tokens, and `Context::with_tokens`
-builds a context on it: only the rest of the prompt runs.
+In chapter 21 every forward is submitted on a pipeline the inferlet chooses
+(`wit/pipeline.wit`), as in the reference. Forwards on one pipeline run in
+the order they were submitted; forwards on different pipelines are
+independent. The scheduler (`crates/runtime/src/scheduler.rs`) runs a
+forward once every earlier one on its pipeline has finished, or is running
+in full in the same step, where arrival order puts it first. So eight beams
+on one pipeline still run as one batch. Each `Context` has a pipeline, and
+its forks share it, because a fork reads what its parent wrote.
 
-In `tests/inferlets/auto-prefix` every request is a long system prompt and
-its own question. Asked three different questions in turn, the second and
-third reuse 288 of about 310 prompt tokens: the system prompt, found by its
-tokens, with nothing published and no key. Asked the same question again,
-it reuses 304 of 312 and answers in 132ms instead of 197ms, with the same
-answer.
+Two forwards on one context, submitted back to back before either is waited
+for, now give exactly the same result as one forward over all the tokens,
+whether they run in one step or are split across many.
 
 > [!WARNING]
-> A page's KV depends on every token before it, not only on its own. So
-> only clean working sets record their pages: none of their pages were
-> discarded (chapter 8), and every token sits at its own position. Pages are
-> recorded only after the model has written them, so no one can read them
-> too early, and recorded pages are the first to go when memory runs low.
+> Making them run in one step exposed two older assumptions. A forward
+> still in flight used to count as another owner of its pages, so the next
+> forward on the same pages copied them for no reason. In-flight holds are
+> now counted apart from owners (`pins` in `crates/runtime/src/engine.rs`).
+> And a step copies pages before it writes any, so a forward that does copy
+> a page waits while an earlier one still writes it. Beam search now makes
+> fewer copies, and is a little faster (606ms instead of 618ms).
 
 ## Read Order
 
-Read `crates/runtime/src/store.rs`, then `record`, `lookup` and
-`evict_oldest` in `crates/runtime/src/engine.rs`. Then where `forward` in
-`crates/runtime/src/inferlet/host/forward.rs` tracks tokens and records
-pages once the model has run (`on_done`), and `from_prefix` in
-`host/kv_working_set.rs`. Finally `Context::with_tokens` in
-`crates/inferlet/src/lib.rs` and `tests/inferlets/auto-prefix`.
+Read `wit/pipeline.wit` and `on` in `forward` in `wit/forward.wit`. Then
+the pipeline rule in `run` in `crates/runtime/src/scheduler.rs`, `pins`
+and `is_shared` in `crates/runtime/src/engine.rs`, and the `pipeline` field
+of `Context` in `crates/inferlet/src/lib.rs`.
 
 ## Run MacOS
 
 ```bash
 rustup target add wasm32-wasip2
 cargo build --release -p pie --features metal
-cargo build --release -p auto-prefix --target wasm32-wasip2
+cargo build --release -p beam-search --target wasm32-wasip2
 
-./target/release/pie -i 3 --sequential target/wasm32-wasip2/release/auto_prefix.wasm -- "How long can I keep a DVD?" 24
+./target/release/pie target/wasm32-wasip2/release/beam_search.wasm -- "Once upon a time" 8 32
 ```

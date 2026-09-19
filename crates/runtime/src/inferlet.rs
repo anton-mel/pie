@@ -27,16 +27,15 @@ wasmtime::component::bindgen!({
     with: {
         "pie:inferlet/working-set.kv-working-set": KvWorkingSet,
         "pie:inferlet/forward.pending-forward": PendingForward,
+        "pie:inferlet/pipeline.pipeline": Pipeline,
     },
 });
 
 pub struct KvWorkingSet {
     engine: Arc<Engine>,
     pages: Vec<u32>,
-    /// NEW
     /// The token in each slot, as far as it is known.
     tokens: Vec<u32>,
-    /// NEW
     /// Whether its KV is what a fresh prefill of `tokens` would compute: no
     /// pages discarded, every token at its slot's position. Only then are its
     /// full pages recorded for others to share.
@@ -47,6 +46,12 @@ impl Drop for KvWorkingSet {
     fn drop(&mut self) {
         self.engine.free(self.pages.drain(..));
     }
+}
+
+/// NEW
+/// The host side of a `pipeline`: an id the scheduler orders work by.
+pub struct Pipeline {
+    id: u64,
 }
 
 pub struct PendingForward {

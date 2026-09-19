@@ -29,6 +29,15 @@ impl Job {
 
     /// The next `n` of its tokens, as a sequence of their own: the same
     /// pages, a shorter `kv_len`, and only the outputs that fall inside.
+    /// NEW
+    /// Pages its remaining tokens will write.
+    fn writes(&self, page_size: usize) -> impl Iterator<Item = u32> + '_ {
+        let s = &self.request.seq;
+        let first = (s.kv_len - self.left()) / page_size;
+        let last = (s.kv_len - 1) / page_size;
+        s.pages[first..=last].iter().copied()
+    }
+
     fn chunk(&self, n: usize) -> Seq {
         let s = &self.request.seq;
         let (from, to) = (self.done, self.done + n);
@@ -46,19 +55,11 @@ impl Job {
             kv_len: s.kv_len - (s.tokens.len() - to),
         }
     }
-
-    /// Pages its remaining tokens will write.
-    fn writes(&self, page_size: usize) -> impl Iterator<Item = u32> + '_ {
-        let s = &self.request.seq;
-        let first = (s.kv_len - self.left()) / page_size;
-        let last = (s.kv_len - 1) / page_size;
-        s.pages[first..=last].iter().copied()
-    }
 }
 
 /// Runs its steps on an `Engine`.
 /// UPDATED
-/// Runs each finished request's `on_done` before answering it.
+/// Orders jobs by pipeline instead of by the pages they share.
 pub fn run(mut model: Box<dyn Engine>, mut rx: mpsc::UnboundedReceiver<Vec<Request>>, step_tokens: usize) {
     let ps = model.page_size();
     let mut jobs: Vec<Job> = vec![];
@@ -89,21 +90,34 @@ pub fn run(mut model: Box<dyn Engine>, mut rx: mpsc::UnboundedReceiver<Vec<Reque
             add(&mut jobs, batch);
         }
 
-        // Fewest tokens left first, within the budget. A job waits while an
-        // earlier one still has to write pages it reads.
+        // Fewest tokens left first, within the budget. A job runs only after
+        // every earlier job on its pipeline: finished, or running in full in
+        // this same step, where arrival order puts it first.
         jobs.sort_by_key(|j| (j.left(), j.id));
         let mut budget = step_tokens;
         let mut picked = vec![];
+        let mut whole = HashSet::new();
         for (i, job) in jobs.iter().enumerate() {
             if budget == 0 {
                 break;
             }
-            let reads: HashSet<u32> = job.request.seq.pages.iter().copied().collect();
-            let blocked = jobs
+            let pipeline = job.request.pipeline;
+            let mut waiting = jobs
                 .iter()
-                .any(|e| e.id < job.id && e.writes(ps).any(|p| reads.contains(&p)));
-            if !blocked {
+                .any(|e| e.request.pipeline == pipeline && e.id < job.id && !whole.contains(&e.id));
+            // A step copies pages before it writes any, so a job that copies
+            // a page waits while an earlier job still writes that page.
+            if job.done == 0 && !job.request.seq.copies.is_empty() {
+                let sources: HashSet<u32> = job.request.seq.copies.iter().map(|&(from, _)| from).collect();
+                waiting |= jobs
+                    .iter()
+                    .any(|e| e.id < job.id && e.writes(ps).any(|p| sources.contains(&p)));
+            }
+            if !waiting {
                 let n = job.left().min(budget);
+                if n == job.left() {
+                    whole.insert(job.id);
+                }
                 picked.push((i, n));
                 budget -= n;
             }

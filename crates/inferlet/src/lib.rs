@@ -21,9 +21,11 @@ mod sample;
 
 pub use exports::pie::inferlet::run::Guest;
 pub use pie::inferlet::forward::{self, Distribution, PendingForward};
+pub use pie::inferlet::pipeline::Pipeline;
 pub use pie::inferlet::working_set::KvWorkingSet;
 pub use pie::inferlet::{chat, model, session, tokenizer};
 pub use sample::Sampler;
+use std::rc::Rc;
 
 pub struct Context {
     pub tokens: Vec<u32>,
@@ -33,6 +35,10 @@ pub struct Context {
     /// Position of the next token. Equal to `tokens.len()` until pages are
     /// discarded: then the cache gets shorter but positions keep counting.
     pos: u32,
+    /// NEW
+    /// Where its forwards are submitted. Forks share it: a fork reads what
+    /// its parent wrote, so their work must stay in order.
+    pipeline: Rc<Pipeline>,
 }
 
 impl Context {
@@ -41,6 +47,7 @@ impl Context {
             tokens: vec![],
             pending: vec![],
             kv: KvWorkingSet::new(),
+            pipeline: Rc::new(Pipeline::new()),
             page_size: model::kv_page_size(),
             pos: 0,
         }
@@ -51,6 +58,7 @@ impl Context {
             tokens: self.tokens.clone(),
             pending: self.pending.clone(),
             kv: self.kv.fork(),
+            pipeline: self.pipeline.clone(),
             page_size: self.page_size,
             pos: self.pos,
         }
@@ -75,7 +83,6 @@ impl Context {
         Ok(ctx)
     }
 
-    /// NEW
     /// A context holding `tokens`, reusing the KV of the longest prefix of
     /// them that any inferlet has already computed: only the rest runs, on
     /// the next forward. Nothing needs to be agreed on beforehand.
@@ -87,6 +94,7 @@ impl Context {
             tokens: tokens[..covered].to_vec(),
             pending: tokens[covered..].to_vec(),
             kv,
+            pipeline: Rc::new(Pipeline::new()),
             page_size: model::kv_page_size(),
             pos: covered as u32,
         }
@@ -148,6 +156,8 @@ impl Context {
         Ok(self.submit_rows(&[last], Some(allowed), top_k)?.wait()?.remove(0))
     }
 
+    /// UPDATED
+    /// Submits on the context's pipeline.
     /// Submit the pending tokens, asking for a distribution after each
     /// token listed in `outputs` (indices into the pending tokens).
     pub fn submit_rows(
@@ -172,7 +182,16 @@ impl Context {
         let positions: Vec<u32> = (self.pos..self.pos + self.pending.len() as u32).collect();
         self.pos += self.pending.len() as u32;
 
-        let pending = forward::forward(&self.kv, len, &self.pending, &positions, outputs, allowed, top_k)?;
+        let pending = forward::forward(
+            &self.pipeline,
+            &self.kv,
+            len,
+            &self.pending,
+            &positions,
+            outputs,
+            allowed,
+            top_k,
+        )?;
         self.tokens.append(&mut self.pending);
 
         Ok(pending)

@@ -17,7 +17,6 @@ interface working-set {
         from-index: static func(key: string) -> option<kv-working-set>;
         /// Unpublish `key`. Working sets opened from it keep their pages.
         remove-index: static func(key: string) -> bool;
-        /// NEW
         /// A working set holding the longest prefix of `tokens` whose KV any
         /// inferlet has already computed, found by the tokens themselves, and
         /// how many tokens it covers (a whole number of pages). Shared like a

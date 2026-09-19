@@ -4,5 +4,6 @@ mod chat;
 mod forward;
 mod kv_working_set;
 mod model;
+mod pipeline;
 mod session;
 mod tokenizer;

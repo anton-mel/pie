@@ -1,15 +1,15 @@
 //! `forward`: submit tokens to the model and wait for the result.
 
 use crate::inferlet::pie::inferlet::forward::{self, Distribution};
-use crate::inferlet::{KvWorkingSet, PendingForward, State};
+use crate::inferlet::{KvWorkingSet, PendingForward, Pipeline, State};
 use ::engine::Seq;
 use wasmtime::component::Resource;
 
 impl forward::Host for State {
-    /// UPDATED
-    /// Also records full pages of clean working sets for sharing.
+    /// Submits on a pipeline.
     async fn forward(
         &mut self,
+        on: Resource<Pipeline>,
         kv: Resource<KvWorkingSet>,
         kv_len: u32,
         tokens: Vec<u32>,
@@ -18,6 +18,7 @@ impl forward::Host for State {
         allowed: Option<Vec<u32>>,
         top_k: u32,
     ) -> Result<Resource<PendingForward>, String> {
+        let pipeline = self.table.get(&on).map_err(|e| e.to_string())?.id;
         let ws = self.table.get_mut(&kv).map_err(|e| e.to_string())?;
 
         let ps = self.engine.page_size;
@@ -78,7 +79,7 @@ impl forward::Host for State {
             kv_len: kv_len as usize,
         };
 
-        let (request, reply) = self.engine.request(seq, top_k as usize, allowed, on_done);
+        let (request, reply) = self.engine.request(pipeline, seq, top_k as usize, allowed, on_done);
 
         self.unsent.push(request);
 

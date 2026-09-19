@@ -79,7 +79,6 @@ impl working_set::HostKvWorkingSet for State {
         self.engine.unpublish(&key)
     }
 
-    /// NEW
     async fn from_prefix(&mut self, tokens: Vec<u32>) -> (Resource<KvWorkingSet>, u32) {
         let pages = self.engine.lookup(&tokens);
         let covered = pages.len() * self.engine.page_size as usize;

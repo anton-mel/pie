@@ -18,12 +18,14 @@ pub type Reply = oneshot::Receiver<Result<Vec<Distribution>, String>>;
 
 /// Its fields are read by the scheduler.
 pub struct Request {
+    /// NEW
+    /// The pipeline it was submitted on.
+    pub pipeline: u64,
     pub seq: Seq,
     pub top_k: usize,
     /// Token ids the distributions are restricted to, if any.
     pub allowed: Option<Vec<u32>>,
     pub reply: oneshot::Sender<Result<Vec<Distribution>, String>>,
-    /// NEW
     /// Run once the model has run it, before its pages are released.
     pub on_done: Option<Box<dyn FnOnce() + Send>>,
     /// Released when the request is dropped, after the model has run it.
@@ -37,7 +39,11 @@ struct Hold {
 
 impl Drop for Hold {
     fn drop(&mut self) {
-        self.pool.lock().unwrap().free(self.pages.drain(..));
+        let mut pool = self.pool.lock().unwrap();
+        for &p in &self.pages {
+            pool.pins[p as usize] -= 1;
+        }
+        pool.free(self.pages.drain(..));
     }
 }
 
@@ -50,7 +56,6 @@ pub struct Engine {
     pub planner: Planner,
     /// Published working sets, by key.
     index: Mutex<Index>,
-    /// NEW
     /// Every full page computed so far, by the chain hash of its prefix.
     prefixes: Mutex<crate::store::Prefixes>,
 }
@@ -68,6 +73,10 @@ struct Index {
 struct Pool {
     free: Vec<u32>,
     refs: Vec<u32>,
+    /// NEW
+    /// How many of `refs` are in-flight requests holding the page, not
+    /// owners: they keep it alive but do not make it shared.
+    pins: Vec<u32>,
     freed: Arc<Notify>,
 }
 
@@ -103,6 +112,7 @@ impl Engine {
             pool: Arc::new(Mutex::new(Pool {
                 free: (0..pages).rev().collect(),
                 refs: vec![0; pages as usize],
+                pins: vec![0; pages as usize],
                 freed: planner.freed.clone(),
             })),
             queue,
@@ -167,7 +177,6 @@ impl Engine {
         old.map(|(pages, _)| self.free(pages)).is_some()
     }
 
-    /// UPDATED
     /// Drop the recorded prefix page used longest ago, or else the index
     /// entry used longest ago. False if there is nothing to drop.
     fn evict_oldest(&self) -> bool {
@@ -203,20 +212,24 @@ impl Engine {
         pages.iter().for_each(|&p| pool.refs[p as usize] += 1);
     }
 
+    /// UPDATED
+    /// Whether another owner holds the page too. Requests in flight do not
+    /// count: a working set's own queued forward is no reason to copy.
     pub fn is_shared(&self, page: u32) -> bool {
-        self.pool.lock().unwrap().refs[page as usize] > 1
+        let pool = self.pool.lock().unwrap();
+        pool.refs[page as usize] - pool.pins[page as usize] > 1
     }
 
     pub fn free(&self, pages: impl IntoIterator<Item = u32>) {
         self.pool.lock().unwrap().free(pages);
     }
 
-    /// UPDATED
     /// A request for one forward, and where its result will arrive. It holds
     /// `seq.pages`; for copy sources the caller hands over a hold it has.
-    /// `on_done` runs once the model has run it.
+    /// `on_done` runs once the model has run it. Takes its pipeline.
     pub fn request(
         &self,
+        pipeline: u64,
         seq: Seq,
         top_k: usize,
         allowed: Option<Vec<u32>>,
@@ -225,6 +238,12 @@ impl Engine {
         self.share(&seq.pages);
         let mut pages = seq.pages.clone();
         pages.extend(seq.copies.iter().map(|&(from, _)| from));
+        {
+            let mut pool = self.pool.lock().unwrap();
+            for &p in &pages {
+                pool.pins[p as usize] += 1;
+            }
+        }
         let hold = Hold {
             pool: self.pool.clone(),
             pages,
@@ -232,6 +251,7 @@ impl Engine {
         let (reply, rx) = oneshot::channel();
         (
             Request {
+                pipeline,
                 seq,
                 top_k,
                 allowed,
@@ -243,7 +263,6 @@ impl Engine {
         )
     }
 
-    /// NEW
     /// Record full pages under the chain hashes of their prefixes (see
     /// `store`), skipping those already recorded.
     pub fn record(&self, hashes: &[u64], pages: &[u32]) {
@@ -258,7 +277,6 @@ impl Engine {
         }
     }
 
-    /// NEW
     /// The pages of the longest recorded prefix of `tokens`, with one more
     /// holder each.
     pub fn lookup(&self, tokens: &[u32]) -> Vec<u32> {

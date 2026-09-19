@@ -1,0 +1,9 @@
+/// The order work runs in. Forwards submitted on one pipeline run in the
+/// order they were submitted; forwards on different pipelines are
+/// independent, and may run in any order or together. An inferlet puts work
+/// that depends on earlier work on the same pipeline.
+interface pipeline {
+    resource pipeline {
+        constructor();
+    }
+}
