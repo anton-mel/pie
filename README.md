@@ -1,4 +1,4 @@
-# Pie Tutorial: async forward
+# Chapter #5: Async Forward
 
 Now `forward` returns a `pending-forward` at once, and `wait()` gets the
 result (`wit/pie.wit`). The host keeps what an inferlet submits and hands it
