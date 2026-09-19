@@ -2,8 +2,10 @@
 //! implemented against the shared engine (one file each in `host/`).
 
 mod host;
+mod process;
 mod program;
 
+pub use process::{Event, Process, ProcessId, ProcessInfo, Processes};
 pub use program::Programs;
 
 use crate::engine::{Engine, Reply, Request};

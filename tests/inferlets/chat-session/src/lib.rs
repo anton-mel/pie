@@ -25,7 +25,9 @@ impl inferlet::Guest for App {
                 64,
                 |d| sampler.sample(d),
                 |answer| {
-                    // Send only what is new since the last call.
+                    // Send only what is new since the last call, and hold back a
+                    // character whose bytes have not all been generated yet.
+                    let answer = answer.trim_end_matches('\u{FFFD}');
                     if answer.len() > sent && answer.is_char_boundary(sent) {
                         session::send(&answer[sent..]);
                         sent = answer.len();

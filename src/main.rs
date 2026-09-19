@@ -10,12 +10,10 @@ use std::time::Instant;
 struct Args {
     /// Path to the inferlet (.wasm component). Not needed with `--serve`.
     inferlet: Option<String>,
-    /// UPDATED
     /// Serve programs to `pie-client` on this address, instead of running
     /// one.
     #[arg(long)]
     serve: Option<String>,
-    /// NEW
     /// Where installed programs are kept, with `--serve`. Defaults to
     /// `~/.pie-tutorial/programs`.
     #[arg(long)]

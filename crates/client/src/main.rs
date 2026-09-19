@@ -1,9 +1,10 @@
-//! `pie-client`: install programs on a running `pie --serve`, and run them
-//! by name.
+//! `pie-client`: install programs on a running `pie --serve`, run them by
+//! name as processes, and attach to, list or kill processes.
 //!
-//! While a program runs, each line typed on stdin is a message for it, and
-//! its messages are printed as they arrive, then its result. The messages
-//! themselves are in `client-api`.
+//! While attached, each line typed on stdin is a message for the process,
+//! and its messages are printed as they arrive, then its result. Leaving
+//! (Ctrl-C) detaches; the process keeps running. The messages themselves are
+//! in `client-api`.
 
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
@@ -23,6 +24,7 @@ struct Args {
 }
 
 #[derive(Subcommand)]
+/// UPDATED
 enum Command {
     /// Install a program, so it can be run by the name in its manifest.
     Install {
@@ -31,13 +33,19 @@ enum Command {
         /// Its manifest (Pie.toml).
         manifest: PathBuf,
     },
-    /// Run an installed program.
+    /// Run an installed program as a new process, attached to it.
     Run {
         program: String,
         /// Arguments passed to the program.
         #[arg(last = true)]
         args: Vec<String>,
     },
+    /// Attach to a process: see what it sent meanwhile, and talk to it.
+    Attach { process: u64 },
+    /// List the processes.
+    Ps,
+    /// Stop a process.
+    Kill { process: u64 },
 }
 
 #[tokio::main]
@@ -76,8 +84,31 @@ async fn main() -> Result<()> {
                 other => bail!("unexpected {other:?}"),
             }
         }
-        Command::Run { program, args } => {
-            tx.send(send(&ClientMessage::Launch { program, args })).await?;
+        Command::Ps => {
+            tx.send(send(&ClientMessage::List)).await?;
+            let ServerMessage::Processes { processes } = next().await? else {
+                bail!("unexpected reply");
+            };
+            for p in processes {
+                let state = if p.running { "running" } else { "ended" };
+                println!("{:>5}  {:<8} {}", p.process, state, p.program);
+            }
+        }
+        Command::Kill { process } => {
+            tx.send(send(&ClientMessage::Kill { process })).await?;
+            match next().await? {
+                ServerMessage::Killed { process } => println!("killed {process}"),
+                ServerMessage::Error { message } => bail!("{message}"),
+                other => bail!("unexpected {other:?}"),
+            }
+        }
+        Command::Run { .. } | Command::Attach { .. } => {
+            let request = match args.command {
+                Command::Run { program, args } => ClientMessage::Launch { program, args },
+                Command::Attach { process } => ClientMessage::Attach { process },
+                _ => unreachable!(),
+            };
+            tx.send(send(&request)).await?;
             // Forward stdin, one message per line, then say there are no more.
             let (lines, mut to_send) = tokio::sync::mpsc::unbounded_channel();
             std::thread::spawn(move || {
@@ -95,6 +126,7 @@ async fn main() -> Result<()> {
             });
             loop {
                 match next().await? {
+                    ServerMessage::Launched { process } => eprintln!("process {process}"),
                     ServerMessage::Message { text } => {
                         print!("{text}");
                         std::io::stdout().flush()?;
