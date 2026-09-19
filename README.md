@@ -1,0 +1,24 @@
+# Pie Tutorial
+
+A minimal rebuild of [Pie](https://github.com/pie-project/pie) (SOSP'25), one
+chapter per branch. Each chapter builds on the previous one, adds one feature,
+and explains in its README how it fits in. Check out a chapter's branch and
+follow its **Read Order**.
+
+Pie moves the generation loop out of the engine and into small user programs,
+**inferlets**, compiled to WebAssembly. The engine keeps only low-level
+primitives (KV pages, the tokenizer, `forward`) and batches every inferlet's
+calls into one model step.
+
+## Chapters
+
+1. **Inferlets** ([`feat/inferlet`](../../tree/feat/inferlet)): the core. A
+   wasm host that runs inferlets, a five-call contract (`wit/pie.wit`), a
+   paged KV cache, a batcher, and a Qwen model on candle.
+2. **KV working set** ([`feat/kv-working-set`](../../tree/feat/kv-working-set)):
+   the KV cache becomes a resource with logical pages, like virtual memory.
+   The inferlet never sees a physical page, and pages are freed when the
+   handle is dropped.
+3. **KV fork** ([`feat/kv-fork`](../../tree/feat/kv-fork)): `fork()` shares
+   pages copy-on-write, like the OS `fork()`. Beam search becomes a fork and
+   a loop in the inferlet.
