@@ -2,8 +2,10 @@
 
 A minimal rebuild of [Pie](https://github.com/pie-project/pie) (SOSP'25), one
 chapter per branch. Each chapter builds on the previous one, adds one feature,
-and explains in its README how it fits in. Check out a chapter's branch and
-follow its **Read Order**.
+and explains in its README how it fits in. 
+
+> [!NOTE]
+> Check out a chapter's branch and follow its **Read Order**.
 
 ## Chapters
 
