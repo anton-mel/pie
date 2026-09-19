@@ -89,3 +89,6 @@ feature, and explains in its README.
 24. **Our own GPU kernel** ([`feat/metal-kernel`](../../tree/feat/metal-kernel)):
     decoding attention runs in a Metal kernel of our own that reads KV
     pages where they are. Up to 35% faster on long contexts.
+25. **Model descriptions** ([`feat/model-descriptions`](../../tree/feat/model-descriptions)):
+    each family is described once and one transformer follows it. Llama
+    joins Qwen, and the chat format is read from the model itself.
