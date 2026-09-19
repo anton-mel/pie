@@ -20,8 +20,8 @@ wit_bindgen::generate!({
 mod sample;
 
 pub use exports::pie::core::run::Guest;
-pub use pie::core::{chat, session};
 pub use pie::core::model::{self, Distribution, KvWorkingSet, PendingForward};
+pub use pie::core::{chat, session};
 pub use sample::Sampler;
 
 pub struct Context {
@@ -214,7 +214,6 @@ impl Context {
         self.reply_streaming(max_tokens, top_k, sample, |_| {})
     }
 
-    /// NEW
     /// `reply`, calling `on_text` after every token with the answer so far
     /// (thinking left out), so the answer can be sent while it is written.
     pub fn reply_streaming(

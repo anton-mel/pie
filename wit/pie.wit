@@ -74,7 +74,6 @@ interface chat {
     stop-tokens: func() -> list<u32>;
 }
 
-/// NEW
 /// Messages between the inferlet and whoever started it: a client of
 /// `pie --serve`, or the terminal when run with `pie`.
 interface session {

@@ -812,6 +812,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "decode-latency"
+version = "0.1.0"
+dependencies = [
+ "inferlet",
+]
+
+[[package]]
 name = "derive_builder"
 version = "0.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

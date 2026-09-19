@@ -1,5 +1,5 @@
-//! The engine: one model, one KV page pool, and a batcher that runs every
-//! forward submitted since the last step as one batch.
+//! The engine: one model, one KV page pool, and a queue of forwards that
+//! the scheduler (`scheduler.rs`) turns into model steps.
 
 use crate::model::{Model, Seq};
 use crate::planner::Planner;
@@ -16,13 +16,16 @@ pub struct Distribution {
 
 pub type Reply = oneshot::Receiver<Result<Vec<Distribution>, String>>;
 
+/// UPDATED
+/// Its fields are read by the scheduler.
 pub struct Request {
-    seq: Seq,
-    top_k: usize,
+    pub seq: Seq,
+    pub top_k: usize,
     /// Token ids the distributions are restricted to, if any.
-    allowed: Option<Vec<u32>>,
-    reply: oneshot::Sender<Result<Vec<Distribution>, String>>,
-    hold: Hold,
+    pub allowed: Option<Vec<u32>>,
+    pub reply: oneshot::Sender<Result<Vec<Distribution>, String>>,
+    /// Released when the request is dropped, after the model has run it.
+    _hold: Hold,
 }
 
 struct Hold {
@@ -76,10 +79,12 @@ impl Pool {
 }
 
 impl Engine {
-    pub fn new(model: Model, tokenizer: Tokenizer, eos: Vec<u32>, pages: u32) -> Self {
+    /// UPDATED
+    /// Takes the scheduler's token budget per step.
+    pub fn new(model: Model, tokenizer: Tokenizer, eos: Vec<u32>, pages: u32, step_tokens: usize) -> Self {
         let page_size = model.page_size as u32;
         let (queue, rx) = mpsc::unbounded_channel();
-        std::thread::spawn(move || batch_loop(model, rx));
+        std::thread::spawn(move || crate::scheduler::run(model, rx, step_tokens));
         let planner = Planner::new();
         Self {
             tokenizer,
@@ -197,7 +202,7 @@ impl Engine {
                 top_k,
                 allowed,
                 reply,
-                hold,
+                _hold: hold,
             },
             rx,
         )
@@ -208,49 +213,9 @@ impl Engine {
     }
 }
 
-fn batch_loop(mut model: Model, mut rx: mpsc::UnboundedReceiver<Vec<Request>>) {
-    while let Some(mut batch) = rx.blocking_recv() {
-        while let Ok(more) = rx.try_recv() {
-            batch.extend(more);
-        }
-        let mut seqs = vec![];
-        let mut rest = vec![];
-        let mut holds = vec![];
-
-        for r in batch {
-            rest.push((r.seq.outputs.len(), r.top_k, r.allowed, r.reply));
-            seqs.push(r.seq);
-            holds.push(r.hold);
-        }
-
-        match model.forward(&seqs).and_then(|l| Ok(l.to_vec2::<f32>()?)) {
-            Ok(logits) => {
-                // Hand each request its own rows, in order.
-                let mut rows = logits.into_iter();
-                for (n, k, allowed, reply) in rest {
-                    let dists = rows
-                        .by_ref()
-                        .take(n)
-                        .map(|row| top_k(row, k, allowed.as_deref()))
-                        .collect();
-                    let _ = reply.send(Ok(dists));
-                }
-            }
-            Err(e) => {
-                for (_, _, _, reply) in rest {
-                    let _ = reply.send(Err(e.to_string()));
-                }
-            }
-        }
-
-        // The model is done with these pages.
-        drop(holds);
-    }
-}
-
 /// The `k` most likely tokens, only among `allowed` if given; probabilities
 /// are normalized over the tokens that could be picked.
-fn top_k(logits: Vec<f32>, k: usize, allowed: Option<&[u32]>) -> Distribution {
+pub fn top_k(logits: Vec<f32>, k: usize, allowed: Option<&[u32]>) -> Distribution {
     let mut idx: Vec<u32> = match allowed {
         Some(ids) => ids.iter().copied().filter(|&i| (i as usize) < logits.len()).collect(),
         None => (0..logits.len() as u32).collect(),

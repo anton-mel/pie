@@ -39,7 +39,6 @@ pub struct PendingForward {
     reply: Option<Reply>,
 }
 
-/// NEW
 /// Where an inferlet's messages go and come from: a client connection, or
 /// the terminal. It outlives restarts by the planner.
 #[derive(Clone)]
@@ -50,7 +49,6 @@ pub struct Session {
 
 struct State {
     engine: Arc<Engine>,
-    /// NEW
     session: Session,
     id: u64,
     unsent: Vec<Request>,
@@ -157,7 +155,6 @@ impl model::HostPendingForward for State {
     }
 }
 
-/// NEW
 impl session::Host for State {
     async fn send(&mut self, message: String) {
         let _ = self.session.out.send(message);
@@ -309,13 +306,11 @@ impl Host {
         Ok(Component::from_file(&self.wasm, path)?)
     }
 
-    /// NEW
     /// Compile an inferlet a client sent.
     pub fn compile(&self, wasm: &[u8]) -> Result<Component> {
         Ok(Component::new(&self.wasm, wasm)?)
     }
 
-    /// UPDATED
     /// Takes the session the inferlet talks over.
     pub async fn run(
         &self,

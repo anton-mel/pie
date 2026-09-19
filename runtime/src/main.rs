@@ -5,6 +5,7 @@ mod engine;
 mod host;
 mod model;
 mod planner;
+mod scheduler;
 mod server;
 
 use anyhow::{Context, Result};
@@ -18,10 +19,8 @@ use std::time::Instant;
 /// Parse args.
 #[derive(Parser)]
 struct Args {
-    /// UPDATED
     /// Path to the inferlet (.wasm component). Not needed with `--serve`.
     inferlet: Option<String>,
-    /// NEW
     /// Serve inferlets sent by `pie-client` on this address, instead of
     /// running one.
     #[arg(long)]
@@ -36,6 +35,10 @@ struct Args {
     kv_pages: u32, // configured based on your PC
     #[arg(long, default_value_t = 16)]
     page_size: usize,
+    /// NEW
+    /// Most tokens in one model step. Longer prefills are split.
+    #[arg(long, default_value_t = 256)]
+    step_tokens: usize,
     #[arg(long)]
     cpu: bool,
     /// Run the instances one after another instead of all at once.
@@ -103,7 +106,13 @@ async fn main() -> Result<()> {
     )?;
     eprintln!("loaded {} on {:?} in {:.1?}", args.model, device, t.elapsed());
 
-    let engine = Arc::new(engine::Engine::new(model, tokenizer, eos, args.kv_pages));
+    let engine = Arc::new(engine::Engine::new(
+        model,
+        tokenizer,
+        eos,
+        args.kv_pages,
+        args.step_tokens,
+    ));
     let host = Arc::new(host::Host::new(engine)?);
     if let Some(addr) = &args.serve {
         return server::serve(host, addr).await;
@@ -142,7 +151,6 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-/// NEW
 /// The session of a local run: messages are printed as they come, and each
 /// line typed on stdin is a message for the inferlet.
 fn terminal() -> host::Session {
