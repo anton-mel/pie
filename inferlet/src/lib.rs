@@ -28,6 +28,10 @@ pub struct Context {
     pending: Vec<u32>,
     kv: KvWorkingSet,
     page_size: u32,
+    /// NEW
+    /// Position of the next token. Equal to `tokens.len()` until pages are
+    /// discarded: then the cache gets shorter but positions keep counting.
+    pos: u32,
 }
 
 impl Context {
@@ -37,6 +41,7 @@ impl Context {
             pending: vec![],
             kv: KvWorkingSet::new(),
             page_size: model::kv_page_size(),
+            pos: 0,
         }
     }
 
@@ -46,6 +51,7 @@ impl Context {
             pending: self.pending.clone(),
             kv: self.kv.fork(),
             page_size: self.page_size,
+            pos: self.pos,
         }
     }
 
@@ -62,7 +68,6 @@ impl Context {
         self.submit(top_k)?.wait()
     }
 
-    /// UPDATED
     /// Run the pending tokens and return a distribution after each of them:
     /// row `i` predicts the token that follows pending token `i`.
     pub fn forward_all(&mut self, top_k: u32) -> Result<Vec<Distribution>, String> {
@@ -75,7 +80,27 @@ impl Context {
     /// Their KV stays in the pages but is past the end, and the next forward
     /// writes over it.
     pub fn rollback(&mut self, n: usize) {
-        self.tokens.truncate(self.tokens.len().saturating_sub(n));
+        let n = n.min(self.tokens.len());
+        self.tokens.truncate(self.tokens.len() - n);
+        self.pos -= n as u32;
+    }
+
+    /// NEW
+    /// Pages holding the cached tokens.
+    pub fn page_len(&self) -> u32 {
+        (self.tokens.len() as u32).div_ceil(self.page_size)
+    }
+
+    /// NEW
+    /// Drop `n` pages of cached tokens starting at page `start`. The model
+    /// no longer sees those tokens, and their pages go back to the pool.
+    pub fn discard(&mut self, start: u32, n: u32) -> Result<(), String> {
+        let ps = self.page_size as usize;
+        let from = (start as usize * ps).min(self.tokens.len());
+        let to = ((start + n) as usize * ps).min(self.tokens.len());
+        self.kv.discard(start, n)?;
+        self.tokens.drain(from..to);
+        Ok(())
     }
 
     pub fn submit(&mut self, top_k: u32) -> Result<Pending, String> {
@@ -83,7 +108,7 @@ impl Context {
         Ok(Pending(self.submit_rows(&[last], top_k)?))
     }
 
-    /// NEW
+    /// UPDATED
     /// Submit the pending tokens, asking for a distribution after each
     /// token listed in `outputs` (indices into the pending tokens).
     pub fn submit_rows(&mut self, outputs: &[u32], top_k: u32) -> Result<PendingForward, String> {
@@ -100,7 +125,8 @@ impl Context {
             self.kv.reserve(need - have)?;
         }
 
-        let positions: Vec<u32> = (start..len).collect();
+        let positions: Vec<u32> = (self.pos..self.pos + self.pending.len() as u32).collect();
+        self.pos += self.pending.len() as u32;
 
         let pending = model::forward(&self.kv, len, &self.pending, &positions, outputs, top_k)?;
         self.tokens.append(&mut self.pending);

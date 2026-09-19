@@ -25,7 +25,6 @@ pub struct Seq {
     pub copies: Vec<(u32, u32)>,
     pub tokens: Vec<u32>,
     pub positions: Vec<u32>,
-    /// NEW
     /// Which of `tokens` to return logits for, by index.
     pub outputs: Vec<u32>,
     pub pages: Vec<u32>,
@@ -134,8 +133,6 @@ impl Model {
         })
     }
 
-    /// UPDATED
-    ///
     /// Returns f32 logits, one row per entry of each sequence's `outputs`.
     pub fn forward(&mut self, seqs: &[Seq]) -> Result<Tensor> {
         let (nh, nkv, hd, ps) = (self.heads, self.kv_heads, self.head_dim, self.page_size);

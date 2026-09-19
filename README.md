@@ -1,40 +1,41 @@
-# Chapter #7: Sampling
+# Chapter #8: KV Discard
 
-Until chapter 6, every example decoded greedily: always the most likely
-token. Real generation samples, with a temperature and a cut-off like
-top-p. In most engines that is a fixed menu of options passed with the
-request. In Pie it is inferlet code!
+Until chapter 7, a sequence's KV cache only grew. Pages were freed when the
+whole working set was dropped, never while it was in use. So one inferlet
+could never generate more tokens than its pages could hold.
 
-In chapter 7 the engine and `wit/pie.wit` do not change at all. `forward`
-already returns the top-k of the next-token distribution, and that is
-enough: `Sampler` (`inferlet/src/sample.rs`) applies temperature, top-p and
-min-p to it and draws a token, with randomness from WASI. An inferlet can
-write any other sampler the same way, without asking the engine for it.
+In chapter 8 a working set can `discard` pages it no longer needs
+(`wit/pie.wit`). Later pages move down to fill the gap, the dropped pages go
+back to the pool, and later forwards no longer attend to the tokens in them.
+The positions of the tokens that remain do not change, so `Context` now
+counts positions separately from how many tokens are cached.
 
-`examples/parallel-sampling` puts the earlier chapters together: the prompt
-runs once and is forked into several branches (chapter 3) that share its
-pages, each branch samples on its own, and every step submits all branches
-before waiting, so they decode in one batch (chapter 4).
+What to drop is the inferlet's choice. `examples/attention-sink` keeps the
+first page forever, because models lean heavily on the first tokens (the
+"attention sink"), and after it only the last few pages, a sliding window.
+It generates 512 tokens in a pool of 8 pages (128 tokens). Plain greedy
+decoding in the same pool fails with "out of KV pages". Other policies, like
+dropping the tokens that received the least attention, fit the same verb.
 
 > [!NOTE]
-> The model scores all ~150,000 tokens, but `forward` sends the inferlet
-> only the 64 most likely. So the sampler picks from those 64, not from
-> all of them. This barely matters: the other tokens are very unlikely to
-> be picked anyway. The latest Pie avoids the cut. It runs the inferlet's 
-> sampling code on the GPU, next to the scores, so nothing has to be sent.
+> Discarding a page removes its tokens from attention, but the tokens after
+> it were computed while they were still there, so they still carry some of
+> what the dropped tokens said. Nothing is recomputed.
 
 ## Read Order
 
-Read `Sampler::sample` in `inferlet/src/sample.rs`, then
-`examples/parallel-sampling`.
+Read `discard` in `wit/pie.wit` and in `runtime/src/host.rs`. Then, in
+`inferlet/src/lib.rs`, `Context::discard` and the new `pos` field, which
+`submit_rows` now uses for positions. Finally `examples/attention-sink`.
 
 ## Run MacOS
 
 ```bash
 rustup target add wasm32-wasip2
 cargo build --release -p pie --features metal
-cargo build --release -p parallel-sampling --target wasm32-wasip2
+cargo build --release -p text-completion -p attention-sink --target wasm32-wasip2
 
-# 4 samples, 24 tokens, temperature 0.8, top-p 0.95
-./target/release/pie target/wasm32-wasip2/release/parallel_sampling.wasm -- "Once upon a time" 4 24 0.8 0.95
+# 512 tokens in a pool of 8 pages: greedy fails, the attention sink does not
+./target/release/pie --kv-pages 8 target/wasm32-wasip2/release/text_completion.wasm -- "Once upon a time" 512
+./target/release/pie --kv-pages 8 target/wasm32-wasip2/release/attention_sink.wasm -- "Once upon a time" 512 6
 ```

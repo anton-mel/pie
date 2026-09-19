@@ -142,7 +142,6 @@ impl Engine {
     }
 }
 
-/// UPDATED
 fn batch_loop(mut model: Model, mut rx: mpsc::UnboundedReceiver<Vec<Request>>) {
     while let Some(mut batch) = rx.blocking_recv() {
         while let Ok(more) = rx.try_recv() {

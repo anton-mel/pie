@@ -11,6 +11,11 @@ interface model {
         page-len: func() -> u32;
         reserve: func(n: u32) -> result<_, string>;
         fork: func() -> kv-working-set;
+        /// NEW
+        /// Drop `len` pages starting at page `start`, and free them. Later
+        /// pages move down to fill the gap. The tokens in them are gone:
+        /// later forwards do not attend to them.
+        discard: func(start: u32, len: u32) -> result<_, string>;
     }
 
     tokenize: func(text: string) -> list<u32>;
@@ -23,7 +28,6 @@ interface model {
     }
 
     resource pending-forward {
-        /// NEW 
         /// Updated to list<distribution>
         wait: func() -> result<list<distribution>, string>;
     }

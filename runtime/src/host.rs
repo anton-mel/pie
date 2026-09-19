@@ -83,6 +83,18 @@ impl model::HostKvWorkingSet for State {
         self.table.push(child).expect("resource table full")
     }
 
+    /// NEW
+    async fn discard(&mut self, ws: Resource<KvWorkingSet>, start: u32, len: u32) -> Result<(), String> {
+        let ws = self.table.get_mut(&ws).map_err(|e| e.to_string())?;
+        let (start, end) = (start as usize, start as usize + len as usize);
+        if end > ws.pages.len() {
+            return Err(format!("pages {start}..{end} past the end ({})", ws.pages.len()));
+        }
+        // A forward still queued on these pages holds them until it has run.
+        self.engine.free(ws.pages.drain(start..end));
+        Ok(())
+    }
+
     async fn drop(&mut self, ws: Resource<KvWorkingSet>) -> wasmtime::Result<()> {
         self.table.delete(ws)?;
         Ok(())
