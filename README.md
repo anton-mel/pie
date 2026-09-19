@@ -1,4 +1,4 @@
-# Pie Tutorial: Inferlets
+# Chapter #1: Inferlets
 
 Most LLM servers hard-code the generation loop (tokenize, forward, sample,
 repeat) in the engine. Pie moves it out: the loop runs in small user programs,
