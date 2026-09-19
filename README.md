@@ -1,4 +1,4 @@
-# Pie Tutorial: KV fork
+# Chapter #3: KV fork
 
 Chapter 3 borrows another OS idea. `fork()` makes a new working set that
 shares all of its parent's pages (`wit/pie.wit`). Same as in the OS, no pages are copied at fork
