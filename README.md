@@ -1,4 +1,4 @@
-# Pie Tutorial: Planner
+# Chapter #5: Planner
 
 Until chapter 4, `reserve` failed as soon as the KV pool was empty. With many
 inferlets that is worse than it sounds: each grabs part of the pool, none can
