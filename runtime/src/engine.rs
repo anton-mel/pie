@@ -19,7 +19,6 @@ pub type Reply = oneshot::Receiver<Result<Vec<Distribution>, String>>;
 pub struct Request {
     seq: Seq,
     top_k: usize,
-    /// NEW
     /// Token ids the distributions are restricted to, if any.
     allowed: Option<Vec<u32>>,
     reply: oneshot::Sender<Result<Vec<Distribution>, String>>,
@@ -182,7 +181,6 @@ impl Engine {
         self.pool.lock().unwrap().free(pages);
     }
 
-    /// UPDATED
     /// Takes the `allowed` restriction along with the request.
     pub fn request(&self, seq: Seq, top_k: usize, allowed: Option<Vec<u32>>) -> (Request, Reply) {
         self.share(&seq.pages);
@@ -250,7 +248,6 @@ fn batch_loop(mut model: Model, mut rx: mpsc::UnboundedReceiver<Vec<Request>>) {
     }
 }
 
-/// UPDATED
 /// The `k` most likely tokens, only among `allowed` if given; probabilities
 /// are normalized over the tokens that could be picked.
 fn top_k(logits: Vec<f32>, k: usize, allowed: Option<&[u32]>) -> Distribution {

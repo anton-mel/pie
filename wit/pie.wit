@@ -40,7 +40,6 @@ interface model {
         wait: func() -> result<list<distribution>, string>;
     }
 
-    /// UPDATED
     /// Submit a forward and return at once.
     ///
     /// `outputs` picks which of `tokens` to return a next-token distribution
@@ -61,6 +60,21 @@ interface model {
     ) -> result<pending-forward, string>;
 }
 
+/// NEW
+/// The model's chat format. Each role function returns the tokens that add
+/// one message to a conversation; the inferlet appends them to a context.
+interface chat {
+    system: func(message: string) -> list<u32>;
+    user: func(message: string) -> list<u32>;
+    assistant: func(message: string) -> list<u32>;
+    /// Start the assistant's turn: what the model generates next is its reply.
+    cue: func() -> list<u32>;
+    /// Close the assistant's turn after its reply has been generated.
+    seal: func() -> list<u32>;
+    /// Tokens the model ends its reply with.
+    stop-tokens: func() -> list<u32>;
+}
+
 interface run {
     run: func(args: list<string>) -> result<string, string>;
 }
@@ -68,5 +82,6 @@ interface run {
 
 world inferlet {
     import model;
+    import chat;
     export run;
 }

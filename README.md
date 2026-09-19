@@ -1,42 +1,43 @@
-# Chapter #10: Constrained Decoding
+# Chapter #11: Chat
 
-Until chapter 9, the model could produce any token. Often the answer must
-follow a format: one of a few labels, a number, valid JSON. Asking nicely in
-the prompt is not enough, especially with a small model.
+Until chapter 10, every example fed the model raw text. Instruct models are
+trained on conversations written in a fixed format, with a marker for each
+turn and a token that ends the assistant's reply. Without that format they
+ramble or ignore the question.
 
-In chapter 10 `forward` takes an optional `allowed` list of token ids
-(`wit/pie.wit`). The engine then picks only among those, with their
-probabilities renormalized (`top_k` in `runtime/src/engine.rs`). Which
-tokens are allowed is the inferlet's decision, made again at every step.
+In chapter 11 the host tells the inferlet how the model spells a
+conversation (`chat` in `wit/pie.wit`): `system`, `user` and `assistant`
+return the tokens for one message, `cue` starts the assistant's reply, and
+`seal` closes it. The inferlet never writes the format itself, so the same
+inferlet works with any model whose host knows its format. Ours knows one:
+ChatML, which Qwen uses (`chat::Host` in `runtime/src/host.rs`).
 
-`examples/constrained-choice` makes the answer one of a list of choices. At
-each step it allows only the tokens that can still lead to one of them. Asked
-whether a review about cold food is positive, negative or neutral, greedy
-decoding rambles ("The review is neutral. The review says..."), while the
-constrained run answers exactly " negative", and shows how sure it was
-(0.62, against 0.29 and 0.08).
+A conversation is just a context that grows (`examples/chat`): each
+`Context::reply` only runs the new message, not the whole history. Qwen3
+thinks before it answers, between `<think>` and `</think>`, and its own chat
+template leaves that thinking out of the history. `reply` does the same: it
+rolls back the reply (chapter 6) and puts back only the answer. Without that,
+the model breaks down on the second turn.
 
 > [!NOTE]
-> A grammar works the same way, with a richer rule for what may come next:
-> a JSON parser, for example, allows only tokens that keep the output valid
-> JSON. The current Pie has a grammar interface that builds these masks
-> for the inferlet, and applies them on the GPU.
+> The reference Pie also has `tools` (the model calls a function and the
+> inferlet feeds the result back) and `reasoning` (detecting thinking as it
+> is generated). They use the same chat format and are not done here.
 
 ## Read Order
 
-Read `allowed` in `forward` in `wit/pie.wit`. Then `top_k` and where
-`batch_loop` passes `allowed` to it, in `runtime/src/engine.rs`. In
-`inferlet/src/lib.rs`, read `forward_allowed`. Finally
-`examples/constrained-choice`.
+Read `chat` in `wit/pie.wit`, then `chat::Host` in `runtime/src/host.rs`.
+In `inferlet/src/lib.rs`, read `Context::reply` and `Reply`. Finally
+`examples/chat`.
 
 ## Run MacOS
 
 ```bash
 rustup target add wasm32-wasip2
 cargo build --release -p pie --features metal
-cargo build --release -p constrained-choice --target wasm32-wasip2
+cargo build --release -p chat --target wasm32-wasip2
 
-./target/release/pie target/wasm32-wasip2/release/constrained_choice.wasm
-./target/release/pie target/wasm32-wasip2/release/constrained_choice.wasm -- \
-  "The Golden Gate Bridge is in the city of" "New York|Los Angeles|San Francisco|San Diego"
+./target/release/pie target/wasm32-wasip2/release/chat.wasm -- \
+  "I have 3 apples and buy 5 more. How many do I have?" \
+  "I eat 2 of them. How many are left?"
 ```

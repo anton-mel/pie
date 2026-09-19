@@ -4,6 +4,7 @@
 use crate::engine::{Engine, Reply, Request};
 use crate::model::Seq;
 use anyhow::Result;
+use pie::core::chat;
 use pie::core::model::{self, Distribution};
 use std::sync::Arc;
 
@@ -144,6 +145,48 @@ impl model::HostPendingForward for State {
     }
 }
 
+/// NEW
+/// The chat format of Qwen models (ChatML). Other model families write
+/// their turns differently; the reference reads each model's own template.
+impl chat::Host for State {
+    async fn system(&mut self, message: String) -> Vec<u32> {
+        self.turn("system", &message)
+    }
+
+    async fn user(&mut self, message: String) -> Vec<u32> {
+        self.turn("user", &message)
+    }
+
+    async fn assistant(&mut self, message: String) -> Vec<u32> {
+        self.turn("assistant", &message)
+    }
+
+    async fn cue(&mut self) -> Vec<u32> {
+        self.encode("<|im_start|>assistant\n")
+    }
+
+    async fn seal(&mut self) -> Vec<u32> {
+        self.encode("<|im_end|>\n")
+    }
+
+    async fn stop_tokens(&mut self) -> Vec<u32> {
+        self.engine.eos.clone()
+    }
+}
+
+impl State {
+    /// NEW
+    fn encode(&self, text: &str) -> Vec<u32> {
+        let encoding = self.engine.tokenizer.encode(text, false);
+        encoding.map(|e| e.get_ids().to_vec()).unwrap_or_default()
+    }
+
+    /// NEW
+    fn turn(&self, role: &str, message: &str) -> Vec<u32> {
+        self.encode(&format!("<|im_start|>{role}\n{message}<|im_end|>\n"))
+    }
+}
+
 impl model::Host for State {
     async fn kv_page_size(&mut self) -> u32 {
         self.engine.page_size
@@ -165,7 +208,6 @@ impl model::Host for State {
         self.engine.eos.clone()
     }
 
-    /// UPDATED
     async fn forward(
         &mut self,
         kv: Resource<KvWorkingSet>,
@@ -238,6 +280,7 @@ impl Host {
         let mut linker = Linker::new(&wasm);
         wasmtime_wasi::p2::add_to_linker_async(&mut linker)?;
         model::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |s| s)?;
+        chat::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |s| s)?;
         Ok(Self { wasm, linker, engine })
     }
 

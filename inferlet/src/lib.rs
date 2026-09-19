@@ -20,6 +20,7 @@ wit_bindgen::generate!({
 mod sample;
 
 pub use exports::pie::core::run::Guest;
+pub use pie::core::chat;
 pub use pie::core::model::{self, Distribution, KvWorkingSet, PendingForward};
 pub use sample::Sampler;
 
@@ -123,14 +124,12 @@ impl Context {
         Ok(Pending(self.submit_rows(&[last], None, top_k)?))
     }
 
-    /// NEW
     /// Like `forward`, but the next token can only be one of `allowed`.
     pub fn forward_allowed(&mut self, allowed: &[u32], top_k: u32) -> Result<Distribution, String> {
         let last = self.pending.len().saturating_sub(1) as u32;
         Ok(self.submit_rows(&[last], Some(allowed), top_k)?.wait()?.remove(0))
     }
 
-    /// UPDATED
     /// Submit the pending tokens, asking for a distribution after each
     /// token listed in `outputs` (indices into the pending tokens).
     pub fn submit_rows(
@@ -182,6 +181,72 @@ impl Context {
         }
 
         Ok(model::detokenize(&out))
+    }
+}
+
+/// NEW
+/// An assistant reply. Models that reason first (Qwen3) write their thinking
+/// between `<think>` and `</think>` before the answer; it is split off here.
+pub struct Reply {
+    pub thinking: Option<String>,
+    pub text: String,
+}
+
+impl Context {
+    /// NEW
+    pub fn system(&mut self, message: &str) {
+        self.fill_tokens(&chat::system(message));
+    }
+
+    /// NEW
+    pub fn user(&mut self, message: &str) {
+        self.fill_tokens(&chat::user(message));
+    }
+
+    /// NEW
+    /// Generate the assistant's reply to the conversation so far, and close
+    /// its turn so the next message can follow. The context keeps every turn,
+    /// so the next reply only runs the new tokens. Thinking is removed from
+    /// the history afterwards, as the model's own chat template does: the
+    /// reply is rolled back and replaced by the answer alone.
+    pub fn reply(
+        &mut self,
+        max_tokens: usize,
+        top_k: u32,
+        mut sample: impl FnMut(&Distribution) -> u32,
+    ) -> Result<Reply, String> {
+        self.fill_tokens(&chat::cue());
+        let stop = chat::stop_tokens();
+        let mut out = vec![];
+        while out.len() < max_tokens {
+            let next = sample(&self.forward(top_k)?);
+            if stop.contains(&next) {
+                break;
+            }
+            out.push(next);
+            self.fill_tokens(&[next]);
+        }
+
+        let text = model::detokenize(&out);
+        let reply = match text.split_once("</think>") {
+            Some((thinking, answer)) => Reply {
+                thinking: Some(thinking.replace("<think>", "").trim().to_string()),
+                text: answer.trim().to_string(),
+            },
+            None => Reply {
+                thinking: None,
+                text: text.trim().to_string(),
+            },
+        };
+        if reply.thinking.is_some() {
+            // Every generated token but the pending last one has been forwarded.
+            let forwarded = out.len() - self.pending.len();
+            self.pending.clear();
+            self.rollback(forwarded);
+            self.fill(&reply.text);
+        }
+        self.fill_tokens(&chat::seal());
+        Ok(reply)
     }
 }
 
