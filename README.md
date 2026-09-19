@@ -79,3 +79,7 @@ feature, and explains in its README.
 21. 🟩 **Pipelines** ([`feat/pipelines`](../../tree/feat/pipelines)): every
     forward is submitted on a pipeline the inferlet chooses; work on one
     pipeline runs in order, separate pipelines are independent.
+22. **Chat templates** ([`feat/chat-template`](../../tree/feat/chat-template)):
+    the chat format comes from a template picked by the model's config
+    (ChatML, Llama 3, Gemma, DeepSeek), each checked against the family's
+    official template.
