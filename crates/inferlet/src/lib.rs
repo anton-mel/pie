@@ -24,7 +24,6 @@ pub use pie::inferlet::forward::{self, Distribution, PendingForward, Sampler as 
 pub use pie::inferlet::grammar::Matcher;
 pub use pie::inferlet::pipeline::Pipeline;
 pub use pie::inferlet::working_set::KvWorkingSet;
-/// UPDATED
 pub use pie::inferlet::{chat, grammar, model, reasoning, session, tokenizer, tools};
 pub use sample::Sampler;
 use std::rc::Rc;
@@ -286,7 +285,6 @@ impl Context {
         self.system = Some(message.to_string());
     }
 
-    /// NEW
     /// Offer `tools` (JSON function descriptions) to the model: the model's
     /// own way of listing them goes into the system prompt.
     pub fn equip(&mut self, tools: &[String]) -> Result<(), String> {

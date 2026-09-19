@@ -4,7 +4,6 @@ use crate::inferlet::State;
 use crate::inferlet::pie::inferlet::reasoning::{self, Event};
 use wasmtime::component::Resource;
 
-/// NEW
 /// What has been generated, and how much thinking was already reported.
 #[derive(Default)]
 pub struct ThinkingDecoder {

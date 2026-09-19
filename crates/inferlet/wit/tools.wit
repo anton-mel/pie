@@ -1,4 +1,3 @@
-/// NEW
 /// Tools the model can call. The inferlet offers them, spots calls in the
 /// model's output, runs them itself, and gives the results back.
 interface tools {

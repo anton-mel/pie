@@ -23,27 +23,23 @@ pub trait Template: Send + Sync {
     /// Close the assistant's reply after it was generated.
     fn seal(&self) -> &'static str;
 
-    /// NEW
     /// Text to add to the system prompt to offer `tools` (each a JSON
     /// function description), or none if this format has no tools here.
     fn tools(&self, _tools: &[String]) -> Option<String> {
         None
     }
 
-    /// NEW
     /// The results of the tools called in one turn, written as the model
     /// expects to read them.
     fn tool_results(&self, _values: &[String]) -> Option<String> {
         None
     }
 
-    /// NEW
     /// What a tool call starts and ends with in the model's output.
     fn tool_call_markers(&self) -> Option<(&'static str, &'static str)> {
         None
     }
 
-    /// NEW
     /// What thinking starts and ends with in the model's output.
     fn thinking_markers(&self) -> Option<(&'static str, &'static str)> {
         None
@@ -98,7 +94,6 @@ impl Template for ChatMl {
     fn seal(&self) -> &'static str {
         "<|im_end|>\n"
     }
-    /// UPDATED
     /// Tools and thinking as Qwen3's own template writes them.
     fn tools(&self, tools: &[String]) -> Option<String> {
         Some(format!(

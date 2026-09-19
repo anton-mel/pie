@@ -1,4 +1,3 @@
-/// NEW
 /// The model's thinking, followed as it is generated.
 interface reasoning {
     variant event {

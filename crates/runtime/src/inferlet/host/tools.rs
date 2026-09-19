@@ -4,7 +4,6 @@ use crate::inferlet::State;
 use crate::inferlet::pie::inferlet::tools::{self, Event, ToolCall};
 use wasmtime::component::Resource;
 
-/// NEW
 /// What has been generated since the last call, and whether a call is open.
 #[derive(Default)]
 pub struct ToolDecoder {
