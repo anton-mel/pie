@@ -1,0 +1,4 @@
+[package]
+name = "agent"
+version = "0.1.0"
+description = "A model that calls tools the inferlet runs"

@@ -1,0 +1,34 @@
+/// NEW
+/// Tools the model can call. The inferlet offers them, spots calls in the
+/// model's output, runs them itself, and gives the results back.
+interface tools {
+    /// A complete call the model made.
+    record tool-call {
+        name: string,
+        arguments-json: string,
+    }
+
+    variant event {
+        /// Nothing new.
+        none,
+        /// A tool call has started.
+        start,
+        /// A tool call is complete.
+        call(tool-call),
+    }
+
+    /// The text to add to the system prompt to offer `tools`, each a JSON
+    /// function description. An error if the model has no tool format here.
+    equip: func(tools: list<string>) -> result<string, string>;
+
+    /// The results of the tools called in one turn, as tokens to append to
+    /// the conversation.
+    answer: func(values: list<string>) -> result<list<u32>, string>;
+
+    /// Spots tool calls in generated tokens, fed as they come.
+    resource decoder {
+        constructor();
+        feed: func(tokens: list<u32>) -> result<event, string>;
+        reset: func();
+    }
+}

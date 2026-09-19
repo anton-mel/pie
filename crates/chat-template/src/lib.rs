@@ -22,6 +22,32 @@ pub trait Template: Send + Sync {
     fn cue(&self) -> &'static str;
     /// Close the assistant's reply after it was generated.
     fn seal(&self) -> &'static str;
+
+    /// NEW
+    /// Text to add to the system prompt to offer `tools` (each a JSON
+    /// function description), or none if this format has no tools here.
+    fn tools(&self, _tools: &[String]) -> Option<String> {
+        None
+    }
+
+    /// NEW
+    /// The results of the tools called in one turn, written as the model
+    /// expects to read them.
+    fn tool_results(&self, _values: &[String]) -> Option<String> {
+        None
+    }
+
+    /// NEW
+    /// What a tool call starts and ends with in the model's output.
+    fn tool_call_markers(&self) -> Option<(&'static str, &'static str)> {
+        None
+    }
+
+    /// NEW
+    /// What thinking starts and ends with in the model's output.
+    fn thinking_markers(&self) -> Option<(&'static str, &'static str)> {
+        None
+    }
 }
 
 /// The template of a model family, by its config's `model_type`.
@@ -71,6 +97,31 @@ impl Template for ChatMl {
     }
     fn seal(&self) -> &'static str {
         "<|im_end|>\n"
+    }
+    /// UPDATED
+    /// Tools and thinking as Qwen3's own template writes them.
+    fn tools(&self, tools: &[String]) -> Option<String> {
+        Some(format!(
+            "\n\n# Tools\n\nYou may call one or more functions to assist with the user query.\n\n\
+             You are provided with function signatures within <tools></tools> XML tags:\n<tools>\n{}\n</tools>\n\n\
+             For each function call, return a json object with function name and arguments within \
+             <tool_call></tool_call> XML tags:\n<tool_call>\n{{\"name\": <function-name>, \"arguments\": \
+             <args-json-object>}}\n</tool_call>",
+            tools.join("\n")
+        ))
+    }
+    fn tool_results(&self, values: &[String]) -> Option<String> {
+        let responses: Vec<_> = values
+            .iter()
+            .map(|v| format!("<tool_response>\n{v}\n</tool_response>"))
+            .collect();
+        Some(format!("<|im_start|>user\n{}<|im_end|>\n", responses.join("\n")))
+    }
+    fn tool_call_markers(&self) -> Option<(&'static str, &'static str)> {
+        Some(("<tool_call>", "</tool_call>"))
+    }
+    fn thinking_markers(&self) -> Option<(&'static str, &'static str)> {
+        Some(("<think>", "</think>"))
     }
 }
 
@@ -208,6 +259,32 @@ mod tests {
         assert_eq!(text(&*detect("{{ '<|im_start|>' + role }}").unwrap()), render(&ChatMl));
         assert_eq!(text(&*detect("<|start_header_id|>").unwrap()), render(&Llama3));
         assert!(detect("{{ messages }}").is_none());
+    }
+
+    /// What Qwen3's official template writes for a system prompt with one
+    /// tool, a call and its result.
+    #[test]
+    fn chatml_tools() {
+        let tool = r#"{"type": "function", "function": {"name": "get_weather", "description": "Weather in a city", "parameters": {"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]}}}"#;
+        let t = ChatMl;
+        let mut s = t.turn(Role::System, &format!("Be brief.{}", t.tools(&[tool.into()]).unwrap()));
+        s += &t.turn(Role::User, "Weather in Paris?");
+        s += &t.turn(
+            Role::Assistant,
+            "<tool_call>\n{\"name\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}\n</tool_call>",
+        );
+        s += &t.tool_results(&["18C, sunny".into()]).unwrap();
+        s += t.cue();
+        let expected = format!(
+            "<|im_start|>system\nBe brief.\n\n# Tools\n\nYou may call one or more functions to assist with the user query.\n\n\
+             You are provided with function signatures within <tools></tools> XML tags:\n<tools>\n{tool}\n</tools>\n\n\
+             For each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:\n\
+             <tool_call>\n{{\"name\": <function-name>, \"arguments\": <args-json-object>}}\n</tool_call><|im_end|>\n\
+             <|im_start|>user\nWeather in Paris?<|im_end|>\n\
+             <|im_start|>assistant\n<tool_call>\n{{\"name\": \"get_weather\", \"arguments\": {{\"city\": \"Paris\"}}}}\n</tool_call><|im_end|>\n\
+             <|im_start|>user\n<tool_response>\n18C, sunny\n</tool_response><|im_end|>\n<|im_start|>assistant\n"
+        );
+        assert_eq!(s, expected);
     }
 
     #[test]

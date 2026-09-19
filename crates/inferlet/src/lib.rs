@@ -24,7 +24,8 @@ pub use pie::inferlet::forward::{self, Distribution, PendingForward, Sampler as 
 pub use pie::inferlet::grammar::Matcher;
 pub use pie::inferlet::pipeline::Pipeline;
 pub use pie::inferlet::working_set::KvWorkingSet;
-pub use pie::inferlet::{chat, grammar, model, session, tokenizer};
+/// UPDATED
+pub use pie::inferlet::{chat, grammar, model, reasoning, session, tokenizer, tools};
 pub use sample::Sampler;
 use std::rc::Rc;
 
@@ -156,7 +157,6 @@ impl Context {
         Ok(Pending(self.submit_rows(&[last], None, top_k)?))
     }
 
-    /// NEW
     /// Generate text that follows `matcher`'s grammar: at every step only
     /// the tokens it allows are considered, and it is told which one was
     /// picked. Stops at end-of-sequence, or when only that is left.
@@ -284,6 +284,20 @@ impl Context {
     /// Held until the first user message, or the reply.
     pub fn system(&mut self, message: &str) {
         self.system = Some(message.to_string());
+    }
+
+    /// NEW
+    /// Offer `tools` (JSON function descriptions) to the model: the model's
+    /// own way of listing them goes into the system prompt.
+    pub fn equip(&mut self, tools: &[String]) -> Result<(), String> {
+        let offer = tools::equip(tools)?;
+        let system = self.system.take().unwrap_or_default();
+        self.system = Some(if system.is_empty() {
+            offer.trim_start().to_string()
+        } else {
+            system + &offer
+        });
+        Ok(())
     }
 
     /// Writes the conversation's prefix before the first message, and a

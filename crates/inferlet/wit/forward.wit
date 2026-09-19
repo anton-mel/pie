@@ -30,7 +30,7 @@ interface forward {
     /// those token ids, renormalized. The inferlet decides what is allowed
     /// at each step, which is how it enforces a format or a grammar.
     ///
-    /// UPDATED: `sample`, if given, picks each output's token on the device
+    /// `sample`, if given, picks each output's token on the device
     /// instead: its distribution is then just that token and its
     /// probability, and `top-k` does not apply. It cannot be combined with
     /// `allowed`.

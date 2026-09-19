@@ -11,6 +11,10 @@ world inferlet {
     import forward;
     import chat;
     import grammar;
+    /// NEW
+    import tools;
+    /// NEW
+    import reasoning;
     import session;
     export run;
 }

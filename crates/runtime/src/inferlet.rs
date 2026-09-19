@@ -29,6 +29,9 @@ wasmtime::component::bindgen!({
         "pie:inferlet/forward.pending-forward": PendingForward,
         "pie:inferlet/pipeline.pipeline": Pipeline,
         "pie:inferlet/grammar.matcher": ::grammar::Matcher,
+        // NEW
+        "pie:inferlet/tools.decoder": host::tools::ToolDecoder,
+        "pie:inferlet/reasoning.decoder": host::reasoning::ThinkingDecoder,
     },
 });
 

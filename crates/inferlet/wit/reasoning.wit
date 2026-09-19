@@ -1,0 +1,21 @@
+/// NEW
+/// The model's thinking, followed as it is generated.
+interface reasoning {
+    variant event {
+        /// Nothing new.
+        none,
+        /// Thinking has started.
+        start,
+        /// More thinking text.
+        delta(string),
+        /// Thinking is over; all of it.
+        complete(string),
+    }
+
+    /// Follows thinking in generated tokens, fed as they come.
+    resource decoder {
+        constructor();
+        feed: func(tokens: list<u32>) -> event;
+        reset: func();
+    }
+}

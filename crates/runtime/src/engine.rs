@@ -60,7 +60,6 @@ pub struct Engine {
     /// Every full page computed so far, by the chain hash of its prefix.
     prefixes: Mutex<crate::store::Prefixes>,
     pub metrics: Arc<crate::telemetry::Metrics>,
-    /// NEW
     /// Every token's bytes, for grammars; built the first time one is used.
     vocab: std::sync::OnceLock<Arc<grammar::Vocab>>,
 }
@@ -133,7 +132,6 @@ impl Engine {
         }
     }
 
-    /// NEW
     /// The vocabulary as grammars see it: each token's bytes.
     pub fn vocab(&self) -> Arc<grammar::Vocab> {
         self.vocab
