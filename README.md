@@ -1,8 +1,9 @@
 # Pie Tutorial
 
-A minimal rebuild of [Pie](https://github.com/pie-project/pie) (SOSP'25), one
-chapter per branch. Each chapter builds on the previous one, adds one feature,
-and explains in its README how it fits in. 
+[Pie](https://github.com/pie-project/pie) (SOSP'25) 0.5 is about half a
+million lines of code. This repo rebuilds it from scratch in about a thousand,
+one chapter per branch. Each chapter builds on the previous one, adds one
+feature, and explains in its README how it fits in.
 
 > [!NOTE]
 > Check out a chapter's branch and follow its **Read Order**.
