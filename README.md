@@ -67,3 +67,6 @@ feature, and explains in its README.
 18. **Processes** ([`feat/processes`](../../tree/feat/processes)): a
     launched program is a process with an id that outlives its client.
     Clients attach to it, detach, list processes and kill them.
+19. **Sandbox** ([`feat/sandbox`](../../tree/feat/sandbox)): a policy
+    decides what inferlets may reach besides the model: one directory, and
+    TCP to listed addresses. By default, nothing.
