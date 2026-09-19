@@ -11,14 +11,14 @@ Beam search now submits all beams, then waits on each. With 8 beams each
 decoding step is one batch of 8 instead of 8 batches of 1 (0.73s instead of
 1.2s for 32 tokens). It is not 8x, because attention still runs sequence by
 sequence and top-k runs on the CPU. Those belong to the engine, not to Pie's
-design, and a later chapter fixes them.
+design, and a later chapter fixes it.
 
 > [!WARNING]
 > A forward in flight must keep its pages. The inferlet can drop a working
 > set while its forward is still queued, and without care those pages would
 > go back to the pool and be handed to someone else before the model writes
 > into them. So every request holds its pages (`Hold` in
-> `runtime/src/engine.rs`) until the model has run it.
+> `engine.rs`) until the model has run it.
 
 ## Read Order
 
