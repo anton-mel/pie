@@ -46,3 +46,11 @@ feature, and explains in its README.
 12. **Server and client** ([`feat/server`](../../tree/feat/server)): `pie
     --serve` runs inferlets that clients send over the network and talks to
     them while they run. Answers stream back as they are generated.
+13. **Scheduler** ([`feat/scheduler`](../../tree/feat/scheduler)): each
+    model step runs at most a budget of tokens, short requests first, and a
+    long prompt is split across steps. A long prompt no longer stops
+    everyone else's decoding for seconds.
+14. **Batched attention** ([`feat/attention`](../../tree/feat/attention)):
+    attention is planned once per step, and all decoding sequences are
+    attended together. Batched work gets 18-25% faster, with the same
+    results.
