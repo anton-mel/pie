@@ -37,11 +37,12 @@ Nothing about tools runs in the runtime's loop: the model's calls are plain
 tokens, and the inferlet decides what a call does.
 
 > [!NOTE]
-> Greedy decoding with a 0.6B model is fragile: for some questions the
-> model stops in the middle of its second thought, and a tiny numeric
-> difference (Metal vs CPU) changes the path. The same prompt in Hugging
-> Face transformers, which matches ours token for token, can go either
-> way too.
+> Greedy decoding with a 0.6B model is fragile: a tiny numeric difference
+> changes the path. Asked which of Tokyo and London is warmer, the model
+> on Metal calls both tools and then stops in the middle of its second
+> thought; Hugging Face transformers (fp32), given the same prompt,
+> answers "12°C"; and on our CPU the model decides not to call the tools
+> at all.
 >
 > The reference also knows the tool and thinking formats of other model
 > families, and decodes tool calls written in other ways than JSON between
