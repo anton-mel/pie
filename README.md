@@ -8,7 +8,7 @@ feature, and explains in its README.
 ## Chapters
 
 
-🟨 Pie internals
+🟨 Pie internals (Recommended)
 
 1. 🟨 **Inferlets** ([`feat/inferlet`](../../tree/feat/inferlet)): the core. A
    wasm host that runs inferlets, a five-call contract (`wit/pie.wit`), a
