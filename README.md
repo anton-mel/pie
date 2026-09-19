@@ -5,11 +5,6 @@ chapter per branch. Each chapter builds on the previous one, adds one feature,
 and explains in its README how it fits in. Check out a chapter's branch and
 follow its **Read Order**.
 
-Pie moves the generation loop out of the engine and into small user programs,
-**inferlets**, compiled to WebAssembly. The engine keeps only low-level
-primitives (KV pages, the tokenizer, `forward`) and batches every inferlet's
-calls into one model step.
-
 ## Chapters
 
 1. **Inferlets** ([`feat/inferlet`](../../tree/feat/inferlet)): the core. A
