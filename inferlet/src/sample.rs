@@ -6,8 +6,7 @@ use crate::Distribution;
 /// Temperature, top-p and min-p sampling over a top-k distribution.
 ///
 /// The distribution is already cut to its top k tokens, so these act within
-/// those k. Ask `forward` for a k large enough that the cut does not matter
-/// (64 is plenty at usual temperatures).
+/// those k. Ask `forward` for a k large enough that the cut does not matter.
 pub struct Sampler {
     /// 0 is greedy; below 1 sharpens the distribution, above 1 flattens it.
     pub temperature: f32,

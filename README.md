@@ -3,7 +3,7 @@
 Until chapter 6, every example decoded greedily: always the most likely
 token. Real generation samples, with a temperature and a cut-off like
 top-p. In most engines that is a fixed menu of options passed with the
-request. In Pie it is inferlet code.
+request. In Pie it is inferlet code!
 
 In chapter 7 the engine and `wit/pie.wit` do not change at all. `forward`
 already returns the top-k of the next-token distribution, and that is
@@ -17,11 +17,11 @@ pages, each branch samples on its own, and every step submits all branches
 before waiting, so they decode in one batch (chapter 4).
 
 > [!NOTE]
-> Sampling works on the top k tokens the engine returns (64 in the
-> example), not the whole vocabulary. At usual temperatures the rest carry
-> almost no probability. The current Pie goes further and runs the
-> inferlet's sampling code on the GPU, so it can see every token without
-> sending them to the host.
+> The model scores all ~150,000 tokens, but `forward` sends the inferlet
+> only the 64 most likely. So the sampler picks from those 64, not from
+> all of them. This barely matters: the other tokens are very unlikely to
+> be picked anyway. The latest Pie avoids the cut. It runs the inferlet's 
+> sampling code on the GPU, next to the scores, so nothing has to be sent.
 
 ## Read Order
 

@@ -16,7 +16,6 @@ struct Branch {
     done: bool,
 }
 
-/// Argument `i` parsed as a `T`, if it is there.
 fn arg<T: std::str::FromStr>(args: &[String], i: usize) -> Option<T> {
     args.get(i).and_then(|s| s.parse().ok())
 }
