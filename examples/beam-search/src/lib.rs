@@ -35,7 +35,8 @@ impl inferlet::Guest for App {
         }];
 
         for _ in 0..max_tokens {
-            // Every beam's proposals: (parent, next token or None if done, score).
+            // Every beam's proposals is a tuple:
+            // (parent, next token or None if done, score).
             let mut proposals = vec![];
             for (i, b) in beams.iter_mut().enumerate() {
                 if b.done {

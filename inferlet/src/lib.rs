@@ -1,11 +1,5 @@
 //! The library every inferlet links against. It does two things:
 //!
-//! 1. Generates Rust bindings from `wit/pie.wit`, so an inferlet can call
-//!    the runtime as plain functions.
-//! 2. Adds `Context`, a helper that tracks a sequence's tokens and its KV
-//!    working set. You add text, and it reserves pages, computes positions,
-//!    and calls `forward` for you. Its pages are freed when it is dropped.
-//!
 //! To write an inferlet, implement `Guest::run` and export it:
 //!
 //! ```ignore
@@ -27,9 +21,7 @@ pub use exports::pie::core::run::Guest;
 pub use pie::core::model::{self, Distribution, KvWorkingSet};
 
 pub struct Context {
-    /// Tokens whose K/V are in the cache.
     pub tokens: Vec<u32>,
-    /// Tokens added but not yet run through the model.
     pending: Vec<u32>,
     kv: KvWorkingSet,
     page_size: u32,
@@ -45,6 +37,8 @@ impl Context {
         }
     }
 
+    /// NEW
+    ///
     /// A copy of this context that shares its KV cache. Both can go on
     /// independently; a shared page is copied only when one of them writes.
     pub fn fork(&self) -> Self {

@@ -19,11 +19,6 @@ wasmtime::component::bindgen!({
     with: { "pie:core/model.kv-working-set": KvWorkingSet },
 });
 
-/// The host side of a `kv-working-set`: logical page `i` is physical page
-/// `pages[i]`. It lives in the instance's resource table, so an inferlet can
-/// only name its own, and its pages go back to the pool when it is dropped,
-/// either by the guest or with the whole instance on exit. After a fork, two
-/// working sets point at the same physical pages until one writes.
 pub struct KvWorkingSet {
     engine: Arc<Engine>,
     pages: Vec<u32>,
@@ -115,18 +110,22 @@ impl model::Host for State {
         top_k: u32,
     ) -> Result<Distribution, String> {
         let ws = self.table.get_mut(&kv).map_err(|e| e.to_string())?;
+
         // Translate logical pages to physical ones for the pages in use.
         let ps = self.engine.page_size;
         let need = kv_len.div_ceil(ps) as usize;
+
         if need > ws.pages.len() {
             return Err(format!(
                 "kv-len {kv_len} needs {need} pages, working set has {}",
                 ws.pages.len()
             ));
         }
+
         if tokens.is_empty() || tokens.len() != positions.len() || tokens.len() > kv_len as usize {
             return Err("tokens/positions do not fit kv-len".into());
         }
+
         // Copy-on-write: a page this call writes into and a fork still holds
         // is copied to a fresh page first, and this working set moves to it.
         let first = (kv_len - tokens.len() as u32) / ps;
@@ -140,6 +139,7 @@ impl model::Host for State {
                 ws.pages[i] = fresh;
             }
         }
+
         let seq = Seq {
             copies,
             tokens,
@@ -147,7 +147,9 @@ impl model::Host for State {
             pages: ws.pages[..need].to_vec(),
             kv_len: kv_len as usize,
         };
+
         let d = self.engine.forward(seq, top_k as usize).await?;
+
         Ok(Distribution {
             ids: d.ids,
             probs: d.probs,
@@ -163,7 +165,6 @@ pub struct Host {
 
 impl Host {
     pub fn new(engine: Arc<Engine>) -> Result<Self> {
-        // hold wasm and linker here so we can instantiate multiple components with the same engine
         let wasm = Wasm::default();
         let mut linker = Linker::new(&wasm);
         wasmtime_wasi::p2::add_to_linker_async(&mut linker)?;

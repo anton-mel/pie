@@ -22,6 +22,8 @@ pub struct Config {
 }
 
 pub struct Seq {
+    /// NEW
+    ///
     /// Pages to copy `(from, to)` before anything is written: copy-on-write
     /// for pages this sequence shares with a fork.
     pub copies: Vec<(u32, u32)>,
@@ -152,6 +154,10 @@ impl Model {
             off += s.tokens.len();
         }
 
+        /// NEW
+        ///
+        /// Copy-on-write: any page this sequence writes into and a fork still
+        /// holds is copied to a fresh page first, and this sequence moves to it.
         for (from, to) in seqs.iter().flat_map(|s| &s.copies) {
             for l in &mut self.layers {
                 for cache in [&mut l.k_cache, &mut l.v_cache] {

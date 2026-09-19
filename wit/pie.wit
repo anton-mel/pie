@@ -4,17 +4,11 @@ package pie:core@0.1.0;
 
 interface model {
 
-    /// Tokens per KV page.
     kv-page-size: func() -> u32;
 
-    /// A sequence's KV cache: a list of pages the inferlet addresses as
-    /// 0..page-len. Which physical pages back them is the runtime's business,
-    /// so the inferlet never sees, and cannot misuse, a physical page id.
-    /// Dropping the handle returns its pages to the shared pool.
     resource kv-working-set {
         constructor();
         page-len: func() -> u32;
-        /// taken from the shared pool.
         reserve: func(n: u32) -> result<_, string>;
         /// A new working set sharing all of this one's pages. Nothing is
         /// copied: a shared page is copied only when one side writes to it.
