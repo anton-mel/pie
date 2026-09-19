@@ -8,7 +8,7 @@ feature, and explains in its README.
 ## Chapters
 
 
-🟨 Pie internals · 🟩 Model and GPU · 🟥 Server and client · ⬜ Code layout
+🟨 Pie internals
 
 1. 🟨 **Inferlets** ([`feat/inferlet`](../../tree/feat/inferlet)): the core. A
    wasm host that runs inferlets, a five-call contract (`wit/pie.wit`), a
@@ -46,37 +46,37 @@ feature, and explains in its README.
     model's chat format, so an inferlet holds a conversation without knowing
     how the model spells its turns. The model's thinking is kept out of the
     history.
-12. 🟥 **Server and client** ([`feat/server`](../../tree/feat/server)): `pie
+12. **Server and client** ([`feat/server`](../../tree/feat/server)): `pie
     --serve` runs inferlets that clients send over the network and talks to
     them while they run. Answers stream back as they are generated.
 13. 🟨 **Scheduler** ([`feat/scheduler`](../../tree/feat/scheduler)): each
     model step runs at most a budget of tokens, short requests first, and a
     long prompt is split across steps. A long prompt no longer stops
     everyone else's decoding for seconds.
-14. 🟩 **Batched attention** ([`feat/attention`](../../tree/feat/attention)):
+14. **Batched attention** ([`feat/attention`](../../tree/feat/attention)):
     attention is planned once per step, and all decoding sequences are
     attended together. Batched work gets 18-25% faster, with the same
     results.
-15. ⬜ **Reference layout** ([`feat/reference-layout`](../../tree/feat/reference-layout)):
+15. **Reference layout** ([`feat/reference-layout`](../../tree/feat/reference-layout)):
     no new code. The same code moved into the layout of pie-project/pie,
     with the WIT split into one interface per file, and a list of what the
     reference adds on top.
-16. 🟩 **Engine and worker** ([`feat/engine-worker`](../../tree/feat/engine-worker)):
+16. **Engine and worker** ([`feat/engine-worker`](../../tree/feat/engine-worker)):
     the runtime talks to the model through an `Engine` trait only, and a
     worker loads the model and builds the runtime on top.
-17. 🟥 **Protocol and programs** ([`feat/protocol`](../../tree/feat/protocol)):
+17. **Protocol and programs** ([`feat/protocol`](../../tree/feat/protocol)):
     clients talk to a gateway over a shared, versioned protocol on
     websockets, install programs once, and start them by name.
-18. 🟥 **Processes** ([`feat/processes`](../../tree/feat/processes)): a
+18. **Processes** ([`feat/processes`](../../tree/feat/processes)): a
     launched program is a process with an id that outlives its client.
     Clients attach to it, detach, list processes and kill them.
-19. 🟥 **Sandbox** ([`feat/sandbox`](../../tree/feat/sandbox)): a policy
+19. **Sandbox** ([`feat/sandbox`](../../tree/feat/sandbox)): a policy
     decides what inferlets may reach besides the model: one directory, and
     TCP to listed addresses. By default, nothing.
 20. 🟨 **Prefix trie** ([`feat/prefix-trie`](../../tree/feat/prefix-trie)):
     every full page is recorded by a chain hash of its prefix, so prompts
     that start the same share their KV, found by their tokens with no key.
-21. 🟩 **Pipelines** ([`feat/pipelines`](../../tree/feat/pipelines)): every
+21. **Pipelines** ([`feat/pipelines`](../../tree/feat/pipelines)): every
     forward is submitted on a pipeline the inferlet chooses; work on one
     pipeline runs in order, separate pipelines are independent.
 22. **Chat templates** ([`feat/chat-template`](../../tree/feat/chat-template)):
