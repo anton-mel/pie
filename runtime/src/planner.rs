@@ -5,8 +5,7 @@
 //! finish or drop a working set. When every live inferlet is waiting, nobody
 //! will ever free a page, so the planner evicts one: it kills the youngest,
 //! which frees its pages, and it is restarted from scratch once some other
-//! inferlet has finished. The oldest is never evicted, so it always makes
-//! progress.
+//! inferlet has finished. The oldest is never evicted, so it always progress.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -47,7 +46,7 @@ impl Planner {
         }
     }
 
-    /// Register a new inferlet. It is killed when `kill` is notified.
+    /// Register a new inferlet.
     pub fn join(&self) -> (u64, Arc<Notify>) {
         let mut inner = self.inner.lock().unwrap();
         let id = inner.next;
@@ -85,8 +84,8 @@ impl Planner {
         exited.await;
     }
 
-    /// `id` is waiting for pages. If now every live inferlet is, evict the
-    /// youngest. Fails if `id` is alone: its request can never be met.
+    /// id is waiting for pages. If now every live inferlet is, evict the
+    /// youngest. Fails if id is alone: its request can never be met.
     pub fn wait(&self, id: u64) -> Result<(), String> {
         let mut inner = self.inner.lock().unwrap();
         if let Some(m) = inner.live.get_mut(&id) {

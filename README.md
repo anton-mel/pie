@@ -1,11 +1,12 @@
-# Pie Tutorial: planner
+# Pie Tutorial: Planner
 
 Until chapter 4, `reserve` failed as soon as the KV pool was empty. With many
 inferlets that is worse than it sounds: each grabs part of the pool, none can
 finish, and all but one fail with "out of KV pages" even when the pool could
-serve them one after another.
+serve them one after another. For a local inference, this may be a frequent 
+problem due to a limited number of resources.
 
-Now an inferlet that asks for pages that are not free waits for someone to
+In chapter 5, an inferlet that asks for pages that are not free waits for someone to
 free some (`alloc_wait` in `runtime/src/engine.rs`). That works while at
 least one inferlet is still running. When every live inferlet is waiting,
 nobody will ever free a page: that is a deadlock, and the planner
@@ -15,14 +16,11 @@ scratch once another inferlet has finished. The oldest is never evicted, so
 it always makes progress. This is how the OS handles memory pressure: it
 picks a victim (the OOM killer) rather than letting everyone hang.
 
-Four text completions that each need 4 pages, in a pool of 8: before, three
-failed. Now all four finish, with the same output as with a big pool.
-
-> [!WARNING]
+> [!CAUTION]
 > An evicted inferlet starts over, so the work it had done is lost and runs
-> again. A cheaper way would be to copy its pages to CPU memory and bring
-> them back later (swapping). Logical pages from chapter 2 make that
-> possible without the inferlet noticing, but it is not done here.
+> again. A cheaper way is swapping: copy the victim's KV pages from GPU memory
+> to the much larger SSD, free them on the GPU, and copy them back
+> when there is room. Not implemented.
 
 ## Read Order
 

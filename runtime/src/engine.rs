@@ -15,7 +15,6 @@ pub struct Distribution {
 
 pub type Reply = oneshot::Receiver<Result<Distribution, String>>;
 
-/// NEW
 pub struct Request {
     seq: Seq,
     top_k: usize,
@@ -23,7 +22,6 @@ pub struct Request {
     hold: Hold,
 }
 
-/// NEW
 struct Hold {
     pool: Arc<Mutex<Pool>>,
     pages: Vec<u32>,
@@ -90,7 +88,9 @@ impl Engine {
         Some(pages)
     }
 
-    /// `alloc` for inferlet `id`, waiting for pages instead of failing when
+    /// NEW
+    ///
+    /// `alloc` for inferlet id, waiting for pages instead of failing when
     /// there are not enough. The planner decides when waiting is hopeless.
     pub async fn alloc_wait(&self, id: u64, n: u32) -> Result<Vec<u32>, String> {
         loop {
@@ -121,9 +121,6 @@ impl Engine {
         self.pool.lock().unwrap().free(pages);
     }
 
-    /// NEW
-    /// A request for one forward, and where its result will arrive. It holds
-    /// `seq.pages`; for copy sources the caller hands over a hold it has.
     pub fn request(&self, seq: Seq, top_k: usize) -> (Request, Reply) {
         self.share(&seq.pages);
         let mut pages = seq.pages.clone();
@@ -144,14 +141,11 @@ impl Engine {
         )
     }
 
-    /// Queue requests; they go into the same model step.
     pub fn send(&self, requests: Vec<Request>) -> Result<(), String> {
         self.queue.send(requests).map_err(|_| "engine stopped".into())
     }
 }
 
-/// NEW
-/// Take whatever is queued, run it as one batch, repeat.
 fn batch_loop(mut model: Model, mut rx: mpsc::UnboundedReceiver<Vec<Request>>) {
     while let Some(mut batch) = rx.blocking_recv() {
         while let Ok(more) = rx.try_recv() {
