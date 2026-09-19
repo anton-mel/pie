@@ -19,3 +19,6 @@ and explains in its README how it fits in.
 3. **KV fork** ([`feat/kv-fork`](../../tree/feat/kv-fork)): `fork()` shares
    pages copy-on-write, like the OS `fork()`. Beam search becomes a fork and
    a loop in the inferlet.
+4. **Async forward** ([`feat/async-forward`](../../tree/feat/async-forward)):
+   `forward` returns a pending result, like async I/O. An inferlet submits
+   all its sequences before waiting, so its beams run in one model step.
