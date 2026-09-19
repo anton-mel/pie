@@ -59,11 +59,32 @@ impl Context {
         self.submit(top_k)?.wait()
     }
 
+    /// Run the pending tokens and return a distribution after each of them:
+    /// row `i` predicts the token that follows pending token `i`.
+    pub fn forward_all(&mut self, top_k: u32) -> Result<Vec<Distribution>, String> {
+        let outputs: Vec<u32> = (0..self.pending.len() as u32).collect();
+        self.submit_rows(&outputs, top_k)?.wait()
+    }
+
+    /// Forget the last `n` tokens, as if they had never been forwarded.
+    /// Their KV stays in the pages but is past the end, and the next forward
+    /// writes over it.
+    pub fn rollback(&mut self, n: usize) {
+        self.tokens.truncate(self.tokens.len().saturating_sub(n));
+    }
+
     /// NEW
     ///
     /// Like `forward`, but return as soon as it is submitted. Submit on
     /// several contexts, then wait on each: they all run in one model step.
-    pub fn submit(&mut self, top_k: u32) -> Result<PendingForward, String> {
+    pub fn submit(&mut self, top_k: u32) -> Result<Pending, String> {
+        let last = self.pending.len().saturating_sub(1) as u32;
+        Ok(Pending(self.submit_rows(&[last], top_k)?))
+    }
+
+    /// Submit the pending tokens, asking for a distribution after each
+    /// token listed in `outputs` (indices into the pending tokens).
+    pub fn submit_rows(&mut self, outputs: &[u32], top_k: u32) -> Result<PendingForward, String> {
         if self.pending.is_empty() {
             return Err("nothing to forward".into());
         }
@@ -79,7 +100,7 @@ impl Context {
 
         let positions: Vec<u32> = (start..len).collect();
 
-        let pending = model::forward(&self.kv, len, &self.pending, &positions, top_k)?;
+        let pending = model::forward(&self.kv, len, &self.pending, &positions, outputs, top_k)?;
         self.tokens.append(&mut self.pending);
 
         Ok(pending)
@@ -106,6 +127,15 @@ impl Context {
         }
 
         Ok(model::detokenize(&out))
+    }
+}
+
+/// A submitted forward that returns one distribution: after the last token.
+pub struct Pending(PendingForward);
+
+impl Pending {
+    pub fn wait(self) -> Result<Distribution, String> {
+        Ok(self.0.wait()?.remove(0))
     }
 }
 

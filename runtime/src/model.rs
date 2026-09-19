@@ -29,6 +29,8 @@ pub struct Seq {
     pub copies: Vec<(u32, u32)>,
     pub tokens: Vec<u32>,
     pub positions: Vec<u32>,
+    /// Which of `tokens` to return logits for, by index.
+    pub outputs: Vec<u32>,
     pub pages: Vec<u32>,
     pub kv_len: usize,
 }
@@ -135,7 +137,7 @@ impl Model {
         })
     }
 
-    /// Returns `[seqs.len(), vocab]` f32 logits for each sequence's last token.
+    /// Returns f32 logits, one row per entry of each sequence's `outputs`.
     pub fn forward(&mut self, seqs: &[Seq]) -> Result<Tensor> {
         let (nh, nkv, hd, ps) = (self.heads, self.kv_heads, self.head_dim, self.page_size);
         let tokens: Vec<u32> = seqs.iter().flat_map(|s| s.tokens.iter().copied()).collect();
@@ -214,14 +216,18 @@ impl Model {
                 .forward(&(candle_nn::ops::silu(&l.gate.forward(&h)?)? * l.up.forward(&h)?)?)?;
             x = (x + mlp)?;
         }
-        let last: Vec<u32> = seqs
+        // Only the requested rows go through the final norm and the head.
+        let rows: Vec<u32> = seqs
             .iter()
             .zip(&offsets)
-            .map(|(s, o)| (o + s.tokens.len() - 1) as u32)
+            .flat_map(|(s, &o)| s.outputs.iter().map(move |&i| o as u32 + i))
             .collect();
+        if rows.is_empty() {
+            return Ok(Tensor::zeros((0, 1), DType::F32, &self.device)?);
+        }
         let x = self
             .norm
-            .forward(&x.index_select(&Tensor::new(last, &self.device)?, 0)?)?;
+            .forward(&x.index_select(&Tensor::new(rows, &self.device)?, 0)?)?;
         Ok(self.lm_head.forward(&x)?.to_dtype(DType::F32)?)
     }
 }

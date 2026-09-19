@@ -13,12 +13,12 @@ pub struct Distribution {
     pub probs: Vec<f32>,
 }
 
-pub type Reply = oneshot::Receiver<Result<Distribution, String>>;
+pub type Reply = oneshot::Receiver<Result<Vec<Distribution>, String>>;
 
 pub struct Request {
     seq: Seq,
     top_k: usize,
-    reply: oneshot::Sender<Result<Distribution, String>>,
+    reply: oneshot::Sender<Result<Vec<Distribution>, String>>,
     hold: Hold,
 }
 
@@ -156,19 +156,22 @@ fn batch_loop(mut model: Model, mut rx: mpsc::UnboundedReceiver<Vec<Request>>) {
         let mut holds = vec![];
 
         for r in batch {
+            rest.push((r.seq.outputs.len(), r.top_k, r.reply));
             seqs.push(r.seq);
-            rest.push((r.top_k, r.reply));
             holds.push(r.hold);
         }
 
         match model.forward(&seqs).and_then(|l| Ok(l.to_vec2::<f32>()?)) {
             Ok(logits) => {
-                for (row, (k, reply)) in logits.into_iter().zip(rest) {
-                    let _ = reply.send(Ok(top_k(row, k)));
+                // Hand each request its own rows, in order.
+                let mut rows = logits.into_iter();
+                for (n, k, reply) in rest {
+                    let dists = rows.by_ref().take(n).map(|row| top_k(row, k)).collect();
+                    let _ = reply.send(Ok(dists));
                 }
             }
             Err(e) => {
-                for (_, reply) in rest {
+                for (_, _, reply) in rest {
                     let _ = reply.send(Err(e.to_string()));
                 }
             }

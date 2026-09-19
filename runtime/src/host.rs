@@ -94,7 +94,7 @@ impl model::HostKvWorkingSet for State {
 }
 
 impl model::HostPendingForward for State {
-    async fn wait(&mut self, p: Resource<PendingForward>) -> Result<Distribution, String> {
+    async fn wait(&mut self, p: Resource<PendingForward>) -> Result<Vec<Distribution>, String> {
         // Everything submitted so far goes to the engine together, so it
         // lands in one model step.
         if !self.unsent.is_empty() {
@@ -102,11 +102,14 @@ impl model::HostPendingForward for State {
         }
         let pending = self.table.get_mut(&p).map_err(|e| e.to_string())?;
         let reply = pending.reply.take().ok_or("already waited")?;
-        let d = reply.await.map_err(|_| "engine stopped")??;
-        Ok(Distribution {
-            ids: d.ids,
-            probs: d.probs,
-        })
+        let dists = reply.await.map_err(|_| "engine stopped")??;
+        Ok(dists
+            .into_iter()
+            .map(|d| Distribution {
+                ids: d.ids,
+                probs: d.probs,
+            })
+            .collect())
     }
 
     async fn drop(&mut self, p: Resource<PendingForward>) -> wasmtime::Result<()> {
@@ -142,6 +145,7 @@ impl model::Host for State {
         kv_len: u32,
         tokens: Vec<u32>,
         positions: Vec<u32>,
+        outputs: Vec<u32>,
         top_k: u32,
     ) -> Result<Resource<PendingForward>, String> {
         let ws = self.table.get_mut(&kv).map_err(|e| e.to_string())?;
@@ -160,11 +164,15 @@ impl model::Host for State {
             return Err("tokens/positions do not fit kv-len".into());
         }
 
+        if outputs.iter().any(|&i| i as usize >= tokens.len()) {
+            return Err("output index past the new tokens".into());
+        }
+
         let first = (kv_len - tokens.len() as u32) / ps;
         let shared: Vec<usize> = (first as usize..need)
             .filter(|&i| self.engine.is_shared(ws.pages[i]))
             .collect();
-        
+
         /// NEW
         /// Copy-on-write in forward waits the same way
         let fresh = self.engine.alloc_wait(self.id, shared.len() as u32).await?;
@@ -178,6 +186,7 @@ impl model::Host for State {
             copies,
             tokens,
             positions,
+            outputs,
             pages: ws.pages[..need].to_vec(),
             kv_len: kv_len as usize,
         };
@@ -221,7 +230,7 @@ impl Host {
                 r = self.run_once(id, component, &args) => Some(r),
                 _ = kill.notified() => None,
             };
-            
+
             // Dropping the losing branch above dropped the instance, and with
             // it every page it held.
             self.engine.planner.leave(id, result.is_none());
