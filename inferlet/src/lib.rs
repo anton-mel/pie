@@ -20,7 +20,7 @@ wit_bindgen::generate!({
 mod sample;
 
 pub use exports::pie::core::run::Guest;
-pub use pie::core::chat;
+pub use pie::core::{chat, session};
 pub use pie::core::model::{self, Distribution, KvWorkingSet, PendingForward};
 pub use sample::Sampler;
 
@@ -184,7 +184,6 @@ impl Context {
     }
 }
 
-/// NEW
 /// An assistant reply. Models that reason first (Qwen3) write their thinking
 /// between `<think>` and `</think>` before the answer; it is split off here.
 pub struct Reply {
@@ -193,17 +192,14 @@ pub struct Reply {
 }
 
 impl Context {
-    /// NEW
     pub fn system(&mut self, message: &str) {
         self.fill_tokens(&chat::system(message));
     }
 
-    /// NEW
     pub fn user(&mut self, message: &str) {
         self.fill_tokens(&chat::user(message));
     }
 
-    /// NEW
     /// Generate the assistant's reply to the conversation so far, and close
     /// its turn so the next message can follow. The context keeps every turn,
     /// so the next reply only runs the new tokens. Thinking is removed from
@@ -213,7 +209,20 @@ impl Context {
         &mut self,
         max_tokens: usize,
         top_k: u32,
+        sample: impl FnMut(&Distribution) -> u32,
+    ) -> Result<Reply, String> {
+        self.reply_streaming(max_tokens, top_k, sample, |_| {})
+    }
+
+    /// NEW
+    /// `reply`, calling `on_text` after every token with the answer so far
+    /// (thinking left out), so the answer can be sent while it is written.
+    pub fn reply_streaming(
+        &mut self,
+        max_tokens: usize,
+        top_k: u32,
         mut sample: impl FnMut(&Distribution) -> u32,
+        mut on_text: impl FnMut(&str),
     ) -> Result<Reply, String> {
         self.fill_tokens(&chat::cue());
         let stop = chat::stop_tokens();
@@ -225,6 +234,12 @@ impl Context {
             }
             out.push(next);
             self.fill_tokens(&[next]);
+            let so_far = model::detokenize(&out);
+            match so_far.split_once("</think>") {
+                Some((_, answer)) => on_text(answer.trim_start()),
+                None if !so_far.starts_with("<think>") => on_text(&so_far),
+                None => {}
+            }
         }
 
         let text = model::detokenize(&out);

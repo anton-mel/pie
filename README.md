@@ -1,43 +1,45 @@
-# Chapter #11: Chat
+# Chapter #12: Server and Client
 
-Until chapter 10, every example fed the model raw text. Instruct models are
-trained on conversations written in a fixed format, with a marker for each
-turn and a token that ends the assistant's reply. Without that format they
-ramble or ignore the question.
+Until chapter 11, `pie` ran one inferlet file and printed what it returned.
+A serving system is long-running: clients send it programs over the
+network, and talk to them while they run.
 
-In chapter 11 the host tells the inferlet how the model spells a
-conversation (`chat` in `wit/pie.wit`): `system`, `user` and `assistant`
-return the tokens for one message, `cue` starts the assistant's reply, and
-`seal` closes it. The inferlet never writes the format itself, so the same
-inferlet works with any model whose host knows its format. Ours knows one:
-ChatML, which Qwen uses (`chat::Host` in `runtime/src/host.rs`).
+In chapter 12 `pie --serve ADDR` does that (`runtime/src/server.rs`).
+`pie-client` (`client/`) sends it an inferlet with its arguments, and after
+that every line typed on stdin is a message for the inferlet. The inferlet
+talks back through `session` (`wit/pie.wit`): `send` a message, `receive` the
+next one. Every client's inferlet runs in the same engine, so their forwards
+are batched together (chapter 4), even when they run different programs.
 
-A conversation is just a context that grows (`examples/chat`): each
-`Context::reply` only runs the new message, not the whole history. Qwen3
-thinks before it answers, between `<think>` and `</think>`, and its own chat
-template leaves that thinking out of the history. `reply` does the same: it
-rolls back the reply (chapter 6) and puts back only the answer. Without that,
-the model breaks down on the second turn.
+`examples/chat-session` is an interactive chat: each message is one user
+turn, and the answer is sent back while it is being generated, a few
+characters per message (`Context::reply_streaming`). Run locally with
+`pie`, the same inferlet reads messages from stdin and prints what it sends.
 
 > [!NOTE]
-> The reference Pie also has `tools` (the model calls a function and the
-> inferlet feeds the result back) and `reasoning` (detecting thinking as it
-> is generated). They use the same chat format and are not done here.
+> The protocol is one TCP connection per inferlet, one JSON value per line.
+> The current Pie has a gateway that clients reach over websockets, with
+> authentication and file transfer, in front of workers that can be on
+> other machines.
 
 ## Read Order
 
-Read `chat` in `wit/pie.wit`, then `chat::Host` in `runtime/src/host.rs`.
-In `inferlet/src/lib.rs`, read `Context::reply` and `Reply`. Finally
-`examples/chat`.
+Read `session` in `wit/pie.wit`, then `Session` and `session::Host` in
+`runtime/src/host.rs`. Then `runtime/src/server.rs` from the top, and
+`client/src/main.rs`. Finally `Context::reply_streaming` in
+`inferlet/src/lib.rs` and `examples/chat-session`.
 
 ## Run MacOS
 
 ```bash
 rustup target add wasm32-wasip2
 cargo build --release -p pie --features metal
-cargo build --release -p chat --target wasm32-wasip2
+cargo build --release -p pie-client
+cargo build --release -p chat-session -p beam-search --target wasm32-wasip2
 
-./target/release/pie target/wasm32-wasip2/release/chat.wasm -- \
-  "I have 3 apples and buy 5 more. How many do I have?" \
-  "I eat 2 of them. How many are left?"
+./target/release/pie --serve 127.0.0.1:9123
+
+# in other terminals, at the same time
+./target/release/pie-client target/wasm32-wasip2/release/chat_session.wasm
+./target/release/pie-client target/wasm32-wasip2/release/beam_search.wasm -- "The capital of France is" 4 16
 ```

@@ -378,6 +378,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "chat-session"
+version = "0.1.0"
+dependencies = [
+ "inferlet",
+]
+
+[[package]]
 name = "clap"
 version = "4.6.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2529,6 +2536,15 @@ dependencies = [
  "tokio",
  "wasmtime",
  "wasmtime-wasi",
+]
+
+[[package]]
+name = "pie-client"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "serde_json",
 ]
 
 [[package]]

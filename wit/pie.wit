@@ -60,7 +60,6 @@ interface model {
     ) -> result<pending-forward, string>;
 }
 
-/// NEW
 /// The model's chat format. Each role function returns the tokens that add
 /// one message to a conversation; the inferlet appends them to a context.
 interface chat {
@@ -75,6 +74,16 @@ interface chat {
     stop-tokens: func() -> list<u32>;
 }
 
+/// NEW
+/// Messages between the inferlet and whoever started it: a client of
+/// `pie --serve`, or the terminal when run with `pie`.
+interface session {
+    /// Send a message. A reply can be streamed as many small messages.
+    send: func(message: string);
+    /// Wait for the next message. None once the other side is done.
+    receive: func() -> option<string>;
+}
+
 interface run {
     run: func(args: list<string>) -> result<string, string>;
 }
@@ -83,5 +92,6 @@ interface run {
 world inferlet {
     import model;
     import chat;
+    import session;
     export run;
 }

@@ -4,9 +4,10 @@
 use crate::engine::{Engine, Reply, Request};
 use crate::model::Seq;
 use anyhow::Result;
-use pie::core::chat;
 use pie::core::model::{self, Distribution};
+use pie::core::{chat, session};
 use std::sync::Arc;
+use tokio::sync::{Mutex, mpsc};
 
 use wasmtime::component::{Component, Linker, Resource, ResourceTable};
 use wasmtime::{Engine as Wasm, Store};
@@ -38,8 +39,19 @@ pub struct PendingForward {
     reply: Option<Reply>,
 }
 
+/// NEW
+/// Where an inferlet's messages go and come from: a client connection, or
+/// the terminal. It outlives restarts by the planner.
+#[derive(Clone)]
+pub struct Session {
+    pub out: mpsc::UnboundedSender<String>,
+    pub inbox: Arc<Mutex<mpsc::UnboundedReceiver<String>>>,
+}
+
 struct State {
     engine: Arc<Engine>,
+    /// NEW
+    session: Session,
     id: u64,
     unsent: Vec<Request>,
     wasi: WasiCtx,
@@ -146,6 +158,16 @@ impl model::HostPendingForward for State {
 }
 
 /// NEW
+impl session::Host for State {
+    async fn send(&mut self, message: String) {
+        let _ = self.session.out.send(message);
+    }
+
+    async fn receive(&mut self) -> Option<String> {
+        self.session.inbox.lock().await.recv().await
+    }
+}
+
 /// The chat format of Qwen models (ChatML). Other model families write
 /// their turns differently; the reference reads each model's own template.
 impl chat::Host for State {
@@ -175,13 +197,11 @@ impl chat::Host for State {
 }
 
 impl State {
-    /// NEW
     fn encode(&self, text: &str) -> Vec<u32> {
         let encoding = self.engine.tokenizer.encode(text, false);
         encoding.map(|e| e.get_ids().to_vec()).unwrap_or_default()
     }
 
-    /// NEW
     fn turn(&self, role: &str, message: &str) -> Vec<u32> {
         self.encode(&format!("<|im_start|>{role}\n{message}<|im_end|>\n"))
     }
@@ -281,6 +301,7 @@ impl Host {
         wasmtime_wasi::p2::add_to_linker_async(&mut linker)?;
         model::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |s| s)?;
         chat::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |s| s)?;
+        session::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |s| s)?;
         Ok(Self { wasm, linker, engine })
     }
 
@@ -288,11 +309,24 @@ impl Host {
         Ok(Component::from_file(&self.wasm, path)?)
     }
 
-    pub async fn run(&self, component: &Component, args: Vec<String>) -> Result<Result<String, String>> {
+    /// NEW
+    /// Compile an inferlet a client sent.
+    pub fn compile(&self, wasm: &[u8]) -> Result<Component> {
+        Ok(Component::new(&self.wasm, wasm)?)
+    }
+
+    /// UPDATED
+    /// Takes the session the inferlet talks over.
+    pub async fn run(
+        &self,
+        component: &Component,
+        args: Vec<String>,
+        session: Session,
+    ) -> Result<Result<String, String>> {
         loop {
             let (id, kill) = self.engine.planner.join();
             let result = tokio::select! {
-                r = self.run_once(id, component, &args) => Some(r),
+                r = self.run_once(id, component, &args, session.clone()) => Some(r),
                 _ = kill.notified() => None,
             };
 
@@ -309,9 +343,16 @@ impl Host {
         }
     }
 
-    async fn run_once(&self, id: u64, component: &Component, args: &[String]) -> Result<Result<String, String>> {
+    async fn run_once(
+        &self,
+        id: u64,
+        component: &Component,
+        args: &[String],
+        session: Session,
+    ) -> Result<Result<String, String>> {
         let state = State {
             engine: self.engine.clone(),
+            session,
             id,
             unsent: vec![],
             wasi: WasiCtx::builder().inherit_stdio().build(),

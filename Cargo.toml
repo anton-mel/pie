@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["runtime", "inferlet", "examples/*"]
+members = ["runtime", "client", "inferlet", "examples/*"]
 default-members = ["runtime"]
 
 [profile.release]

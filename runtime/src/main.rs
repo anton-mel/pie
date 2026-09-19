@@ -5,6 +5,7 @@ mod engine;
 mod host;
 mod model;
 mod planner;
+mod server;
 
 use anyhow::{Context, Result};
 use candle_core::{DType, Device};
@@ -17,8 +18,14 @@ use std::time::Instant;
 /// Parse args.
 #[derive(Parser)]
 struct Args {
-    /// Path to the inferlet (.wasm component).
-    inferlet: String,
+    /// UPDATED
+    /// Path to the inferlet (.wasm component). Not needed with `--serve`.
+    inferlet: Option<String>,
+    /// NEW
+    /// Serve inferlets sent by `pie-client` on this address, instead of
+    /// running one.
+    #[arg(long)]
+    serve: Option<String>,
     /// Hugging Face model id or local directory.
     #[arg(long, default_value = "Qwen/Qwen3-0.6B")]
     model: String,
@@ -98,16 +105,21 @@ async fn main() -> Result<()> {
 
     let engine = Arc::new(engine::Engine::new(model, tokenizer, eos, args.kv_pages));
     let host = Arc::new(host::Host::new(engine)?);
-    let component = host.load(&args.inferlet)?;
+    if let Some(addr) = &args.serve {
+        return server::serve(host, addr).await;
+    }
+    let component = host.load(args.inferlet.as_deref().context("give an inferlet or --serve")?)?;
+    let session = terminal();
 
     let t = Instant::now();
     let mut running = vec![];
     let mut done = vec![];
     for _ in 0..args.instances {
         let (host, component, inferlet_args) = (host.clone(), component.clone(), args.args.clone());
+        let session = session.clone();
         let run = tokio::spawn(async move {
             let started = Instant::now();
-            let result = host.run(&component, inferlet_args).await;
+            let result = host.run(&component, inferlet_args, session).await;
             (started.elapsed(), result)
         });
         // Sequential: finish this one before starting the next.
@@ -128,4 +140,31 @@ async fn main() -> Result<()> {
     }
     eprintln!("{} run(s) in {:.1?}", args.instances, t.elapsed());
     Ok(())
+}
+
+/// NEW
+/// The session of a local run: messages are printed as they come, and each
+/// line typed on stdin is a message for the inferlet.
+fn terminal() -> host::Session {
+    use std::io::{BufRead, Write};
+    let (out, mut outbox) = tokio::sync::mpsc::unbounded_channel::<String>();
+    tokio::spawn(async move {
+        while let Some(message) = outbox.recv().await {
+            print!("{message}");
+            let _ = std::io::stdout().flush();
+        }
+    });
+    let (to_inbox, inbox) = tokio::sync::mpsc::unbounded_channel();
+    // A plain thread: reading stdin blocks, and must not keep `pie` alive.
+    std::thread::spawn(move || {
+        for line in std::io::stdin().lock().lines().map_while(Result::ok) {
+            if to_inbox.send(line).is_err() {
+                break;
+            }
+        }
+    });
+    host::Session {
+        out,
+        inbox: std::sync::Arc::new(tokio::sync::Mutex::new(inbox)),
+    }
 }
