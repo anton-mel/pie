@@ -83,3 +83,6 @@ feature, and explains in its README.
     the chat format comes from a template picked by the model's config
     (ChatML, Llama 3, Gemma, DeepSeek), each checked against the family's
     official template.
+23. **Config, model catalog and metrics** ([`feat/config-catalog`](../../tree/feat/config-catalog)):
+    `pie` gets subcommands, a config file, a catalog of imported models
+    checked before their weights are fetched, and a `/metrics` endpoint.
