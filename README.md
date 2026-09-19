@@ -7,7 +7,7 @@ organised differently, to hold far more code.
 In chapter 15 nothing new is added. The same code is moved into the layout of
 [pie-project/pie](https://github.com/pie-project/pie), with the same names,
 so that after this tutorial the real repository is familiar. Every example
-gives exactly the same output as in chapter 14.
+gives exactly the same output.
 
 ```
 Cargo.toml                 the `pie` binary and the workspace
