@@ -4,7 +4,7 @@
 
 mod weights;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use candle_core::{DType, Device};
 use candle_nn::VarBuilder;
 use runtime::inferlet::Host;
@@ -40,7 +40,16 @@ pub fn start(config: &Config) -> Result<Arc<Host>> {
     let model = models::Model::load(&files.config, vb, config.kv_pages as usize, config.page_size)?;
     eprintln!("loaded {} on {:?} in {:.1?}", config.model, device, t.elapsed());
 
+    let template = chat_template::for_model(&files.model_type)
+        .with_context(|| format!("no chat template for model type {:?}", files.model_type))?;
     let engine: Box<dyn engine::Engine> = Box::new(model);
-    let runtime = runtime::engine::Engine::new(engine, files.tokenizer, files.eos, config.kv_pages, config.step_tokens);
+    let runtime = runtime::engine::Engine::new(
+        engine,
+        files.tokenizer,
+        template,
+        files.eos,
+        config.kv_pages,
+        config.step_tokens,
+    );
     Host::new(Arc::new(runtime), config.policy.clone()).map(Arc::new)
 }

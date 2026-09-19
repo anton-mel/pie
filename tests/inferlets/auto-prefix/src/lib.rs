@@ -32,8 +32,8 @@ impl inferlet::Guest for App {
         let question = args.first().map_or("How long can I keep a DVD?", |s| s);
         let max_tokens: usize = args.get(1).and_then(|n| n.parse().ok()).unwrap_or(32);
 
-        let mut prompt = chat::system(SYSTEM.trim());
-        prompt.extend(chat::user(&format!("{question} /no_think")));
+        let mut prompt = chat::prefix();
+        prompt.extend(chat::system_user(SYSTEM.trim(), &format!("{question} /no_think")));
         let mut ctx = Context::with_tokens(&prompt);
         let reused = ctx.tokens.len();
 

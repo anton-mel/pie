@@ -48,7 +48,6 @@ impl Drop for KvWorkingSet {
     }
 }
 
-/// NEW
 /// The host side of a `pipeline`: an id the scheduler orders work by.
 pub struct Pipeline {
     id: u64,

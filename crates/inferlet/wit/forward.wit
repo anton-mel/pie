@@ -12,7 +12,6 @@ interface forward {
         wait: func() -> result<list<distribution>, string>;
     }
 
-    /// UPDATED
     /// Submit a forward on pipeline `on` and return at once.
     ///
     /// `outputs` picks which of `tokens` to return a next-token distribution

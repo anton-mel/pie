@@ -29,7 +29,6 @@ impl Job {
 
     /// The next `n` of its tokens, as a sequence of their own: the same
     /// pages, a shorter `kv_len`, and only the outputs that fall inside.
-    /// NEW
     /// Pages its remaining tokens will write.
     fn writes(&self, page_size: usize) -> impl Iterator<Item = u32> + '_ {
         let s = &self.request.seq;
@@ -58,7 +57,6 @@ impl Job {
 }
 
 /// Runs its steps on an `Engine`.
-/// UPDATED
 /// Orders jobs by pipeline instead of by the pages they share.
 pub fn run(mut model: Box<dyn Engine>, mut rx: mpsc::UnboundedReceiver<Vec<Request>>, step_tokens: usize) {
     let ps = model.page_size();

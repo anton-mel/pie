@@ -8,6 +8,7 @@ metal = ["models/metal"]
 
 [dependencies]
 anyhow = "1"
+chat-template = { path = "../chat-template" }
 candle-core = "0.11"
 candle-nn = "0.11"
 engine = { path = "../engine" }

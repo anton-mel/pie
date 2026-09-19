@@ -408,6 +408,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "chat-template"
+version = "0.1.0"
+
+[[package]]
 name = "clap"
 version = "4.6.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3040,6 +3044,7 @@ name = "runtime"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chat-template",
  "engine",
  "tokenizers 0.23.2",
  "tokio",
@@ -5039,6 +5044,7 @@ dependencies = [
  "anyhow",
  "candle-core",
  "candle-nn",
+ "chat-template",
  "engine",
  "hf-hub",
  "models",

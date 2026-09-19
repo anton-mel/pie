@@ -1,9 +1,16 @@
 /// The model's chat format. Each role function returns the tokens that add
 /// one message to a conversation; the inferlet appends them to a context.
 interface chat {
+    /// NEW
+    /// The tokens a conversation starts with (a begin-of-text marker), if any.
+    prefix: func() -> list<u32>;
     system: func(message: string) -> list<u32>;
     user: func(message: string) -> list<u32>;
     assistant: func(message: string) -> list<u32>;
+    /// NEW
+    /// A system prompt and the first user message. Some models fold the
+    /// system prompt into the user's message instead of giving it a turn.
+    system-user: func(system: string, user: string) -> list<u32>;
     /// Start the assistant's turn: what the model generates next is its reply.
     cue: func() -> list<u32>;
     /// Close the assistant's turn after its reply has been generated.

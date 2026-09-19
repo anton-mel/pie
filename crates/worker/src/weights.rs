@@ -8,6 +8,9 @@ use tokenizers::Tokenizer;
 
 pub struct Files {
     pub config: models::Config,
+    /// NEW
+    /// The model family, as its config names it (`model_type`).
+    pub model_type: String,
     pub weights: Vec<PathBuf>,
     pub tokenizer: Tokenizer,
     pub eos: Vec<u32>,
@@ -50,6 +53,7 @@ impl Files {
             v => v.as_u64().map(|v| v as u32).into_iter().collect(),
         };
         Ok(Self {
+            model_type: config["model_type"].as_str().unwrap_or_default().to_string(),
             config: serde_json::from_value(config)?,
             weights,
             tokenizer,

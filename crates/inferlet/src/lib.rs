@@ -35,10 +35,13 @@ pub struct Context {
     /// Position of the next token. Equal to `tokens.len()` until pages are
     /// discarded: then the cache gets shorter but positions keep counting.
     pos: u32,
-    /// NEW
     /// Where its forwards are submitted. Forks share it: a fork reads what
     /// its parent wrote, so their work must stay in order.
     pipeline: Rc<Pipeline>,
+    /// NEW
+    /// A system prompt not yet written: it goes in with the first user
+    /// message, since some models fold it into that message.
+    system: Option<String>,
 }
 
 impl Context {
@@ -50,6 +53,7 @@ impl Context {
             pipeline: Rc::new(Pipeline::new()),
             page_size: model::kv_page_size(),
             pos: 0,
+            system: None,
         }
     }
 
@@ -61,6 +65,7 @@ impl Context {
             pipeline: self.pipeline.clone(),
             page_size: self.page_size,
             pos: self.pos,
+            system: self.system.clone(),
         }
     }
 
@@ -97,6 +102,7 @@ impl Context {
             pipeline: Rc::new(Pipeline::new()),
             page_size: model::kv_page_size(),
             pos: covered as u32,
+            system: None,
         }
     }
 
@@ -156,7 +162,6 @@ impl Context {
         Ok(self.submit_rows(&[last], Some(allowed), top_k)?.wait()?.remove(0))
     }
 
-    /// UPDATED
     /// Submits on the context's pipeline.
     /// Submit the pending tokens, asking for a distribution after each
     /// token listed in `outputs` (indices into the pending tokens).
@@ -229,12 +234,30 @@ pub struct Reply {
 }
 
 impl Context {
+    /// UPDATED
+    /// Held until the first user message, or the reply.
     pub fn system(&mut self, message: &str) {
-        self.fill_tokens(&chat::system(message));
+        self.system = Some(message.to_string());
     }
 
+    /// UPDATED
+    /// Writes the conversation's prefix before the first message, and a
+    /// held system prompt together with this message.
     pub fn user(&mut self, message: &str) {
-        self.fill_tokens(&chat::user(message));
+        self.start();
+        let turn = match self.system.take() {
+            Some(system) => chat::system_user(&system, message),
+            None => chat::user(message),
+        };
+        self.fill_tokens(&turn);
+    }
+
+    /// NEW
+    /// The conversation's prefix, if nothing is written yet.
+    fn start(&mut self) {
+        if self.tokens.is_empty() && self.pending.is_empty() {
+            self.fill_tokens(&chat::prefix());
+        }
     }
 
     /// Generate the assistant's reply to the conversation so far, and close
@@ -260,6 +283,10 @@ impl Context {
         mut sample: impl FnMut(&Distribution) -> u32,
         mut on_text: impl FnMut(&str),
     ) -> Result<Reply, String> {
+        self.start();
+        if let Some(system) = self.system.take() {
+            self.fill_tokens(&chat::system(&system));
+        }
         self.fill_tokens(&chat::cue());
         let stop = chat::stop_tokens();
         let mut out = vec![];

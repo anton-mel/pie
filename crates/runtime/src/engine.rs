@@ -18,7 +18,6 @@ pub type Reply = oneshot::Receiver<Result<Vec<Distribution>, String>>;
 
 /// Its fields are read by the scheduler.
 pub struct Request {
-    /// NEW
     /// The pipeline it was submitted on.
     pub pipeline: u64,
     pub seq: Seq,
@@ -49,6 +48,9 @@ impl Drop for Hold {
 
 pub struct Engine {
     pub tokenizer: Tokenizer,
+    /// NEW
+    /// How the model writes a conversation.
+    pub template: Box<dyn chat_template::Template>,
     pub eos: Vec<u32>,
     pub page_size: u32,
     pool: Arc<Mutex<Pool>>,
@@ -73,7 +75,6 @@ struct Index {
 struct Pool {
     free: Vec<u32>,
     refs: Vec<u32>,
-    /// NEW
     /// How many of `refs` are in-flight requests holding the page, not
     /// owners: they keep it alive but do not make it shared.
     pins: Vec<u32>,
@@ -94,9 +95,12 @@ impl Pool {
 
 impl Engine {
     /// Takes the backend as an `::engine::Engine`, not a model.
+    /// UPDATED
+    /// Takes the model's chat template.
     pub fn new(
         model: Box<dyn ::engine::Engine>,
         tokenizer: Tokenizer,
+        template: Box<dyn chat_template::Template>,
         eos: Vec<u32>,
         pages: u32,
         step_tokens: usize,
@@ -107,6 +111,7 @@ impl Engine {
         let planner = Planner::new();
         Self {
             tokenizer,
+            template,
             eos,
             page_size,
             pool: Arc::new(Mutex::new(Pool {
@@ -212,7 +217,6 @@ impl Engine {
         pages.iter().for_each(|&p| pool.refs[p as usize] += 1);
     }
 
-    /// UPDATED
     /// Whether another owner holds the page too. Requests in flight do not
     /// count: a working set's own queued forward is no reason to copy.
     pub fn is_shared(&self, page: u32) -> bool {
