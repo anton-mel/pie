@@ -58,3 +58,9 @@ feature, and explains in its README.
     no new code. The same code moved into the layout of pie-project/pie,
     with the WIT split into one interface per file, and a list of what the
     reference adds on top.
+16. **Engine and worker** ([`feat/engine-worker`](../../tree/feat/engine-worker)):
+    the runtime talks to the model through an `Engine` trait only, and a
+    worker loads the model and builds the runtime on top.
+17. **Protocol and programs** ([`feat/protocol`](../../tree/feat/protocol)):
+    clients talk to a gateway over a shared, versioned protocol on
+    websockets, install programs once, and start them by name.
