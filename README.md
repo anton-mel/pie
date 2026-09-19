@@ -30,3 +30,12 @@ feature, and explains in its README.
 7. **Sampling** ([`feat/sampling`](../../tree/feat/sampling)): temperature,
    top-p and min-p written in the inferlet, with no engine change. Several
    samples of one prompt share its pages and decode in one batch.
+8. **KV discard** ([`feat/kv-discard`](../../tree/feat/kv-discard)): a
+   working set can drop pages it no longer needs. Keeping the first page and
+   a sliding window, an inferlet generates far more tokens than the pool holds.
+9. **Prefix cache** ([`feat/prefix-cache`](../../tree/feat/prefix-cache)):
+   a working set can be published under a key and opened by other inferlets,
+   so a shared system prompt is computed once.
+10. **Constrained decoding** ([`feat/constrained-decoding`](../../tree/feat/constrained-decoding)):
+    `forward` can restrict which tokens may come next. The inferlet decides
+    at each step, so the answer is always one of a list of choices.
