@@ -6,7 +6,7 @@ one chapter per branch. Each chapter builds on the previous one, adds one
 feature, and explains in its README.
 
 > [!NOTE]
-> Check out a chapter's branch and follow its **Read Order**.
+> Follow chapter's **Read Order**.
 
 ## Chapters
 
