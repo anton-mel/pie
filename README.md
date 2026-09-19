@@ -92,3 +92,6 @@ feature, and explains in its README.
 25. **Model descriptions** ([`feat/model-descriptions`](../../tree/feat/model-descriptions)):
     each family is described once and one transformer follows it. Llama
     joins Qwen, and the chat format is read from the model itself.
+26. **Sampling on the GPU** ([`feat/gpu-sampling`](../../tree/feat/gpu-sampling)):
+    an inferlet attaches a sampler to a forward, and a kernel of our own
+    picks the token next to the logits, from the whole vocabulary.
