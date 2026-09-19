@@ -133,7 +133,9 @@ impl Model {
         })
     }
 
+    /// UPDATED
     /// Returns f32 logits, one row per entry of each sequence's `outputs`.
+    /// Attention now follows a plan made once per step (`Plan`).
     pub fn forward(&mut self, seqs: &[Seq]) -> Result<Tensor> {
         let (nh, nkv, hd, ps) = (self.heads, self.kv_heads, self.head_dim, self.page_size);
         let tokens: Vec<u32> = seqs.iter().flat_map(|s| s.tokens.iter().copied()).collect();
@@ -143,23 +145,12 @@ impl Model {
         let (cos, sin) = (self.cos.index_select(&pos, 0)?, self.sin.index_select(&pos, 0)?);
 
         let mut offsets = Vec::new();
-        let mut slots = Vec::new();
         let mut off = 0;
         for s in seqs {
-            let slot = |i: usize| s.pages[i / ps] * ps as u32 + (i % ps) as u32;
-            slots.push(Tensor::new((0..s.kv_len).map(slot).collect::<Vec<_>>(), &self.device)?);
             offsets.push(off);
             off += s.tokens.len();
         }
-
-        for (from, to) in seqs.iter().flat_map(|s| &s.copies) {
-            for l in &mut self.layers {
-                for cache in [&mut l.k_cache, &mut l.v_cache] {
-                    let page = cache.narrow(0, *from as usize * ps, ps)?.copy()?;
-                    cache.slice_set(&page, 0, *to as usize * ps)?;
-                }
-            }
-        }
+        let plan = Plan::new(seqs, &offsets, (nkv, hd, nh / nkv), ps, &self.device)?;
 
         let mut x = self.embed.forward(&Tensor::new(tokens, &self.device)?)?;
         for l in &mut self.layers {
@@ -178,29 +169,24 @@ impl Model {
             let k = heads(l.k.forward(&h)?, nkv, &l.k_norm)?;
             let v = l.v.forward(&h)?.reshape((n, nkv, hd))?;
 
-            let mut outs = Vec::new();
-            for (i, s) in seqs.iter().enumerate() {
-                let (o, len) = (offsets[i], s.tokens.len());
-                // Write the new tokens' K/V into their slots, one page run at a time.
-                let mut j = 0;
-                while j < len {
-                    let p = s.kv_len - len + j;
-                    let run = (ps - p % ps).min(len - j);
-                    let at = s.pages[p / ps] as usize * ps + p % ps;
-                    l.k_cache.slice_set(&k.narrow(0, o + j, run)?.contiguous()?, 0, at)?;
-                    l.v_cache.slice_set(&v.narrow(0, o + j, run)?.contiguous()?, 0, at)?;
-                    j += run;
+            // Copy-on-write pages first, then every new token's K/V into its
+            // slot: one gather and one scatter per cache for the whole batch.
+            if let Some((from, to)) = &plan.copy {
+                for cache in [&l.k_cache, &l.v_cache] {
+                    cache.scatter_set(to, &cache.index_select(from, 0)?, 0)?;
                 }
-                outs.push(attend(
-                    &q.narrow(0, o, len)?,
-                    &l.k_cache,
-                    &l.v_cache,
-                    &slots[i],
-                    s.kv_len,
-                    nkv,
-                )?);
             }
-            let attn = l.o.forward(&Tensor::cat(&outs, 0)?)?;
+            l.k_cache.scatter_set(&plan.write, &k.contiguous()?, 0)?;
+            l.v_cache.scatter_set(&plan.write, &v.contiguous()?, 0)?;
+
+            let mut outs = Vec::new();
+            if let Some(d) = &plan.decode {
+                outs.push(attend_decode(&q, &l.k_cache, &l.v_cache, d, nkv)?);
+            }
+            for p in &plan.prefill {
+                outs.push(attend(&q.narrow(0, p.offset, p.len)?, &l.k_cache, &l.v_cache, p, nkv)?);
+            }
+            let attn = l.o.forward(&Tensor::cat(&outs, 0)?.index_select(&plan.order, 0)?)?;
             x = (x + attn)?;
             let h = l.ln2.forward(&x)?;
             let mlp = l
@@ -215,11 +201,11 @@ impl Model {
             .zip(&offsets)
             .flat_map(|(s, &o)| s.outputs.iter().map(move |&i| o as u32 + i))
             .collect();
-        
+
         if rows.is_empty() {
             return Ok(Tensor::zeros((0, 1), DType::F32, &self.device)?);
         }
-        
+
         let x = self
             .norm
             .forward(&x.index_select(&Tensor::new(rows, &self.device)?, 0)?)?;
@@ -227,26 +213,166 @@ impl Model {
     }
 }
 
-/// Causal attention of `q` ([len, nh, hd], the sequence's last `len` tokens)
-/// over the `kv_len` cache slots in `slots`.
-fn attend(q: &Tensor, kc: &Tensor, vc: &Tensor, slots: &Tensor, kv_len: usize, nkv: usize) -> Result<Tensor> {
+/// NEW
+/// The batch's attention, worked out once per step and used by every layer.
+struct Plan {
+    /// Cache row of every new token, repeated to `[n, kv_heads, head_dim]`:
+    /// the index that writes all new K/V in one `scatter_set`.
+    write: Tensor,
+    /// Copy-on-write for the whole batch: the cache rows of every page to
+    /// copy, and where they go (repeated to `[rows, kv_heads, head_dim]`).
+    copy: Option<(Tensor, Tensor)>,
+    /// Sequences with one new token, attended together.
+    decode: Option<Decode>,
+    /// Sequences with more (prefill, verify), attended one at a time.
+    prefill: Vec<Prefill>,
+    /// Puts the attention outputs, decodes first, back in token order.
+    order: Tensor,
+}
+
+/// NEW
+struct Decode {
+    /// Their rows of `q`.
+    rows: Tensor,
+    /// Their cache slots, each padded with slot 0 to the longest: `[b * len]`.
+    slots: Tensor,
+    /// 0 for real slots, -inf for padding: `[b, 1, 1, len]`.
+    mask: Tensor,
+    b: usize,
+    len: usize,
+}
+
+/// NEW
+struct Prefill {
+    offset: usize,
+    len: usize,
+    slots: Tensor,
+    /// Causal mask of the sequence's new tokens: `[group * len, kv_len]`.
+    mask: Tensor,
+}
+
+impl Plan {
+    fn new(
+        seqs: &[Seq],
+        offsets: &[usize],
+        (nkv, hd, group): (usize, usize, usize),
+        ps: usize,
+        device: &Device,
+    ) -> Result<Self> {
+        let slot = |s: &Seq, i: usize| s.pages[i / ps] * ps as u32 + (i % ps) as u32;
+        let n: usize = seqs.iter().map(|s| s.tokens.len()).sum();
+
+        let write: Vec<u32> = seqs
+            .iter()
+            .flat_map(|s| (s.kv_len - s.tokens.len()..s.kv_len).map(move |i| slot(s, i)))
+            .collect();
+        let write = Tensor::from_vec(write, (n, 1, 1), device)?
+            .broadcast_as((n, nkv, hd))?
+            .contiguous()?;
+
+        let rows = |page: u32| (0..ps as u32).map(move |i| page * ps as u32 + i);
+        let pairs: Vec<&(u32, u32)> = seqs.iter().flat_map(|s| &s.copies).collect();
+        let copy = if pairs.is_empty() {
+            None
+        } else {
+            let from: Vec<u32> = pairs.iter().flat_map(|&&(f, _)| rows(f)).collect();
+            let to: Vec<u32> = pairs.iter().flat_map(|&&(_, t)| rows(t)).collect();
+            let m = to.len();
+            let to = Tensor::from_vec(to, (m, 1, 1), device)?
+                .broadcast_as((m, nkv, hd))?
+                .contiguous()?;
+            Some((Tensor::new(from, device)?, to))
+        };
+
+        let (singles, longer): (Vec<usize>, Vec<usize>) = (0..seqs.len()).partition(|&i| seqs[i].tokens.len() == 1);
+        let mut order_src: Vec<usize> = vec![];
+        let decode = if singles.is_empty() {
+            None
+        } else {
+            let (b, len) = (singles.len(), singles.iter().map(|&i| seqs[i].kv_len).max().unwrap());
+            let (mut slots, mut mask) = (vec![0u32; b * len], vec![f32::NEG_INFINITY; b * len]);
+            for (j, &i) in singles.iter().enumerate() {
+                for c in 0..seqs[i].kv_len {
+                    slots[j * len + c] = slot(&seqs[i], c);
+                    mask[j * len + c] = 0.0;
+                }
+                order_src.push(offsets[i]);
+            }
+            let rows: Vec<u32> = singles.iter().map(|&i| offsets[i] as u32).collect();
+            Some(Decode {
+                rows: Tensor::new(rows, device)?,
+                slots: Tensor::new(slots, device)?,
+                mask: Tensor::from_vec(mask, (b, 1, 1, len), device)?,
+                b,
+                len,
+            })
+        };
+        let mut prefill = vec![];
+        for &i in &longer {
+            let s = &seqs[i];
+            let (len, kv_len) = (s.tokens.len(), s.kv_len);
+            ensure!(len <= kv_len, "more new tokens than sequence length");
+            let past = kv_len - len;
+            let mask: Vec<f32> = (0..group * len)
+                .flat_map(|r| (0..kv_len).map(move |c| if c <= past + r % len { 0.0 } else { f32::NEG_INFINITY }))
+                .collect();
+            prefill.push(Prefill {
+                offset: offsets[i],
+                len,
+                slots: Tensor::new((0..kv_len).map(|c| slot(s, c)).collect::<Vec<_>>(), device)?,
+                mask: Tensor::from_vec(mask, (group * len, kv_len), device)?,
+            });
+            order_src.extend(offsets[i]..offsets[i] + len);
+        }
+        // `order_src[k]` is the token at output row `k`; invert it.
+        let mut order = vec![0u32; n];
+        for (k, &t) in order_src.iter().enumerate() {
+            order[t] = k as u32;
+        }
+        Ok(Self {
+            write,
+            copy,
+            decode,
+            prefill,
+            order: Tensor::new(order, device)?,
+        })
+    }
+}
+
+/// NEW
+/// Attention of all single-token sequences at once: one gather of their
+/// cache slots, one batched matmul, one softmax.
+fn attend_decode(q: &Tensor, kc: &Tensor, vc: &Tensor, d: &Decode, nkv: usize) -> Result<Tensor> {
+    let (_, nh, hd) = q.dims3()?;
+    let (b, len, group) = (d.b, d.len, nh / nkv);
+    let q = q.contiguous()?.index_select(&d.rows, 0)?.reshape((b, nkv, group, hd))?;
+    let gather = |c: &Tensor| -> Result<Tensor> {
+        Ok(c.index_select(&d.slots, 0)?
+            .reshape((b, len, nkv, hd))?
+            .permute((0, 2, 1, 3))?
+            .contiguous()?)
+    };
+    let (k, v) = (gather(kc)?, gather(vc)?);
+    let scores = (q.contiguous()?.matmul(&k.transpose(2, 3)?)? / (hd as f64).sqrt())?.to_dtype(DType::F32)?;
+    let p = candle_nn::ops::softmax_last_dim(&scores.broadcast_add(&d.mask)?)?.to_dtype(v.dtype())?;
+    Ok(p.matmul(&v)?.reshape((b, nh * hd))?)
+}
+
+/// UPDATED
+/// Causal attention of one sequence's new tokens `q` (`[len, nh, hd]`) over
+/// its cache slots. Its slots and mask now come from the step's plan.
+fn attend(q: &Tensor, kc: &Tensor, vc: &Tensor, p: &Prefill, nkv: usize) -> Result<Tensor> {
     let (len, nh, hd) = q.dims3()?;
-    ensure!(len <= kv_len, "more new tokens than sequence length");
     let group = nh / nkv;
     // [nkv, group, len, hd] against [nkv, kv_len, hd] handles GQA without copying K/V.
     let q = q
         .reshape((len, nkv, group, hd))?
         .permute((1, 2, 0, 3))?
         .reshape((nkv, group * len, hd))?;
-    let k = kc.index_select(slots, 0)?.transpose(0, 1)?.contiguous()?;
-    let v = vc.index_select(slots, 0)?.transpose(0, 1)?.contiguous()?;
+    let k = kc.index_select(&p.slots, 0)?.transpose(0, 1)?.contiguous()?;
+    let v = vc.index_select(&p.slots, 0)?.transpose(0, 1)?.contiguous()?;
     let scores = (q.contiguous()?.matmul(&k.t()?)? / (hd as f64).sqrt())?.to_dtype(DType::F32)?;
-    let past = kv_len - len;
-    let mask: Vec<f32> = (0..group * len)
-        .flat_map(|r| (0..kv_len).map(move |c| if c <= past + r % len { 0.0 } else { f32::NEG_INFINITY }))
-        .collect();
-    let mask = Tensor::from_vec(mask, (group * len, kv_len), q.device())?;
-    let p = candle_nn::ops::softmax_last_dim(&scores.broadcast_add(&mask)?)?.to_dtype(v.dtype())?;
+    let p = candle_nn::ops::softmax_last_dim(&scores.broadcast_add(&p.mask)?)?.to_dtype(v.dtype())?;
     let out = p.matmul(&v)?.reshape((nkv, group, len, hd))?.permute((2, 0, 1, 3))?;
     Ok(out.reshape((len, nh * hd))?)
 }

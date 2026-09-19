@@ -16,7 +16,6 @@ pub struct Distribution {
 
 pub type Reply = oneshot::Receiver<Result<Vec<Distribution>, String>>;
 
-/// UPDATED
 /// Its fields are read by the scheduler.
 pub struct Request {
     pub seq: Seq,
@@ -79,7 +78,6 @@ impl Pool {
 }
 
 impl Engine {
-    /// UPDATED
     /// Takes the scheduler's token budget per step.
     pub fn new(model: Model, tokenizer: Tokenizer, eos: Vec<u32>, pages: u32, step_tokens: usize) -> Self {
         let page_size = model.page_size as u32;

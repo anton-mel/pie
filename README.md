@@ -1,51 +1,54 @@
-# Chapter #13: Scheduler
+# Chapter #14: Batched Attention
 
-Until chapter 12, every model step ran everything queued at once. One long
-prompt then held up everybody: while a client's 4,000-token prompt ran, an
-inferlet that was decoding waited 2 seconds for its next token instead of
-6 milliseconds.
+Until chapter 13, the linear layers ran every sequence of a step as one
+matrix, but attention looped over the sequences one at a time. Each one
+wrote its K/V, gathered its cache slots, built its causal mask on the CPU,
+and ran its own matmuls and softmax, in every layer. With 8 beams that is
+thousands of small GPU operations per step, and it grows with every
+sequence.
 
-In chapter 13 the scheduler (`runtime/src/scheduler.rs`) decides what goes
-into each step, the way vLLM does. A step runs at most `--step-tokens`
-tokens (256 by default). Requests with the fewest tokens left go first: most
-of them are one inferlet waiting for its next token. A long prompt fills
-what is left and is split across steps, and its inferlet gets the result
-once the last piece has run. Nothing changes for inferlets: they submit
-forwards as before, and results are exactly the same.
+In chapter 14 the attention of a step is planned once and reused by every
+layer (`Plan` in `runtime/src/model.rs`):
 
-| `--step-tokens` | longest wait of a decoding inferlet | 4,000-token prompt takes |
+- every new token's K/V is written with one `scatter_set` per cache;
+- every copy-on-write page (chapter 3) is copied with one gather and one
+  scatter per cache;
+- sequences with one new token, the common case when many beams, samples or
+  clients decode together, are attended together: their cache slots are
+  gathered once, padded to the longest with a mask over the padding, and
+  run through one batched matmul and one softmax (`attend_decode`);
+- longer ones (prefill, verification) keep their own attention, with masks
+  built once per step instead of once per layer.
+
+Results are unchanged, and batched work gets 18-25% faster:
+
+| | chapter 13 | chapter 14 |
 |---|---|---|
-| unlimited (before) | 2041 ms | 2.05 s |
-| 1024 | 1071 ms | 1.81 s |
-| 256 | 312 ms | 1.75 s |
-| 64 | 170 ms | 3.31 s |
+| beam search, 8 beams, 32 tokens | 752 ms | 617 ms |
+| beam search, 16 beams | 1200 ms | 922 ms |
+| 8 parallel samples | 794 ms | 609 ms |
+| 16 inferlets, 48 tokens each | 2400 ms | 1800 ms |
 
-> [!WARNING]
-> Two forwards on the same working set must run in order, because the second
-> reads what the first writes. Once short requests may go first, a later
-> decode could overtake an earlier prompt. So a request waits while an
-> earlier one still has to write pages it reads (`writes` in
-> `runtime/src/scheduler.rs`). Forked branches write their own copied pages
-> (chapter 3), so they still run together.
+> [!NOTE]
+> Attention still gathers each sequence's pages into a new tensor before it
+> reads them. The current Pie has its own GPU kernels (`crates/kernels-*`)
+> that read the pages where they are, with no copy and no padding, for
+> CUDA, Metal, Vulkan and WebGPU. What is left of the cost here is mostly
+> the many small operations candle launches, which only such a kernel
+> removes.
 
 ## Read Order
 
-Read `runtime/src/scheduler.rs` from the top: `Job::chunk` cuts a request
-into a smaller one, and `run` picks the jobs for each step. Then `Request`
-and `Engine::new` in `runtime/src/engine.rs`. Finally
-`examples/decode-latency`, which measures the waits.
+Read `Plan::new` in `runtime/src/model.rs`, then where `Model::forward` uses
+the plan in its layer loop, then `attend_decode` and `attend`.
 
 ## Run MacOS
 
 ```bash
 rustup target add wasm32-wasip2
 cargo build --release -p pie --features metal
-cargo build --release -p pie-client
-cargo build --release -p decode-latency -p text-completion --target wasm32-wasip2
+cargo build --release -p beam-search -p parallel-sampling --target wasm32-wasip2
 
-./target/release/pie --serve 127.0.0.1:9123 --step-tokens 256
-
-# in other terminals: a decoding inferlet, then a long prompt while it runs
-./target/release/pie-client target/wasm32-wasip2/release/decode_latency.wasm -- 300
-./target/release/pie-client target/wasm32-wasip2/release/text_completion.wasm -- "$(cat long-prompt.txt)" 1
+./target/release/pie target/wasm32-wasip2/release/beam_search.wasm -- "Once upon a time" 8 32
+./target/release/pie target/wasm32-wasip2/release/parallel_sampling.wasm -- "Once upon a time" 8 32
 ```

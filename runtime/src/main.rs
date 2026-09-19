@@ -35,7 +35,6 @@ struct Args {
     kv_pages: u32, // configured based on your PC
     #[arg(long, default_value_t = 16)]
     page_size: usize,
-    /// NEW
     /// Most tokens in one model step. Longer prefills are split.
     #[arg(long, default_value_t = 256)]
     step_tokens: usize,
