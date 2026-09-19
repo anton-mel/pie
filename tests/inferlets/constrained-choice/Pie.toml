@@ -1,0 +1,4 @@
+[package]
+name = "constrained-choice"
+version = "0.1.0"
+description = "The answer must be one of a list of choices"

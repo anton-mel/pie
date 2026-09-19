@@ -362,7 +362,6 @@ fn attend(q: &Tensor, kc: &Tensor, vc: &Tensor, p: &Prefill, nkv: usize) -> Resu
     Ok(out.reshape((len, nh * hd))?)
 }
 
-/// NEW
 /// The model as an engine: the runtime reaches it only through this.
 impl engine::Engine for Model {
     fn page_size(&self) -> usize {

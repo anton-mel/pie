@@ -2,6 +2,9 @@
 //! implemented against the shared engine (one file each in `host/`).
 
 mod host;
+mod program;
+
+pub use program::Programs;
 
 use crate::engine::{Engine, Reply, Request};
 use anyhow::Result;

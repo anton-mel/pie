@@ -56,7 +56,6 @@ impl Job {
     }
 }
 
-/// UPDATED
 /// Runs its steps on an `Engine`.
 pub fn run(mut model: Box<dyn Engine>, mut rx: mpsc::UnboundedReceiver<Vec<Request>>, step_tokens: usize) {
     let ps = model.page_size();

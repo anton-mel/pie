@@ -1,0 +1,4 @@
+[package]
+name = "text-completion"
+version = "0.1.0"
+description = "Greedy completion of a prompt"

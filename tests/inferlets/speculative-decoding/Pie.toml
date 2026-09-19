@@ -1,0 +1,4 @@
+[package]
+name = "speculative-decoding"
+version = "0.1.0"
+description = "Speculative decoding without a draft model (prompt lookup)"

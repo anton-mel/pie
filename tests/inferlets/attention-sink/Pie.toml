@@ -1,0 +1,4 @@
+[package]
+name = "attention-sink"
+version = "0.1.0"
+description = "Generate far more tokens than the KV cache holds (attention sink)"

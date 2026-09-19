@@ -1,0 +1,4 @@
+[package]
+name = "chat"
+version = "0.1.0"
+description = "A conversation: each argument is one user message"

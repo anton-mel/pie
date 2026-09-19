@@ -9,6 +9,7 @@ metal = ["worker/metal"]
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
+gateway = { path = "crates/gateway" }
 runtime = { path = "crates/runtime" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
 worker = { path = "crates/worker" }

@@ -1,0 +1,4 @@
+[package]
+name = "chat-session"
+version = "0.1.0"
+description = "An interactive chat, streamed"

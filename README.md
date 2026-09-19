@@ -1,47 +1,58 @@
-# Chapter #16: Engine and Worker
+# Chapter #17: Protocol and Programs
 
-Until chapter 15, the runtime called the model directly: the scheduler held
-a candle `Model` and ran `Model::forward`, and `src/main.rs` found the
-checkpoint, loaded the weights and wired everything together. The runtime
-knew exactly which model it had, and on which device.
+Until chapter 16, `pie --serve` was a TCP server inside the runtime, with a
+line-based JSON protocol written out by hand on both sides, and every client
+uploaded its whole inferlet on every connection.
 
-In chapter 16 two crates separate those concerns, as in the reference.
+In chapter 17 clients talk to a gateway, over a protocol both sides share,
+and start programs by name, as in the reference.
 
-`crates/engine` is the contract between the runtime and whatever runs the
-model: a `Seq` (one sequence's share of a step) and a trait `Engine` with
-two methods, `page_size` and `forward`, which returns one row of logits per
-requested output. The runtime now depends on this crate only. The scheduler
-holds a `Box<dyn Engine>`, and `models` implements the trait for the Qwen
-model. A second backend would be a second implementation, with no change to
-the runtime.
+`crates/client-api` is that protocol: the only public interface, and it has
+a version. A client sends `Install`, `Launch`, `Message` or `Close`; the
+server answers `Hello`, `Installed`, `Message`, `Result` or `Error`. They are
+typed Rust enums, sent as JSON over websockets, and the gateway and the
+client both use the same crate, so they cannot drift apart.
 
-`crates/worker` is the role that owns the GPU. `worker::start(config)`
-finds the model's files (`weights.rs`), loads the model, opens it as an
-engine, and builds the runtime on top. `src/main.rs` only parses arguments,
-asks the worker for a running host, and runs or serves inferlets.
+Every inferlet in `tests/inferlets` now has a manifest, `Pie.toml`, with its
+name, version and description. `pie-client install` sends a program once;
+the runtime checks that it compiles and keeps it as
+`<name>/<version>.wasm` in a program directory
+(`crates/runtime/src/inferlet/program.rs`, by default
+`~/.pie-tutorial/programs`), where it stays across restarts.
+`pie-client run <name>` then starts the latest version by name.
+
+`crates/gateway` is the server, moved out of the runtime: it greets each
+client with the protocol version, installs programs, launches them, and
+relays the session's messages both ways.
 
 ```
-src/main.rs ──▶ worker ──▶ models (impl Engine)
-                  │
-                  └──▶ runtime ──▶ engine (the trait)
+pie-client ──websocket──▶ gateway ──▶ runtime (programs, inferlets, …)
+          (client-api)
 ```
 
-Nothing changes for inferlets, and every example gives the same output as
-in chapter 15, at the same speed.
+> [!NOTE]
+> The reference's gateway also decides whether to admit each request,
+> moves files, and routes sessions to one of several workers, and programs
+> can be fetched from a registry and declare typed parameters. Here,
+> arguments are still a list of strings.
 
 ## Read Order
 
-Read `crates/engine/src/lib.rs`, then `impl engine::Engine for Model` at
-the end of `crates/models/src/qwen.rs`. Then `crates/worker/src/lib.rs` and
-`weights.rs`. Finally `Engine::new` in `crates/runtime/src/engine.rs`,
-`scheduler::run`, and the shorter `src/main.rs`.
+Read `crates/client-api/src/lib.rs`, then `crates/gateway/src/lib.rs`, then
+`Programs` in `crates/runtime/src/inferlet/program.rs`. Finally
+`crates/client/src/main.rs` and a `Pie.toml` in `tests/inferlets`.
 
 ## Run MacOS
 
 ```bash
 rustup target add wasm32-wasip2
 cargo build --release -p pie --features metal
-cargo build --release -p text-completion --target wasm32-wasip2
+cargo build --release -p client
+cargo build --release -p text-completion -p chat-session --target wasm32-wasip2
 
-./target/release/pie target/wasm32-wasip2/release/text_completion.wasm -- "The capital of France is" 24
+./target/release/pie --serve 127.0.0.1:9123
+
+# in another terminal: install once, then run by name
+./target/release/pie-client install target/wasm32-wasip2/release/chat_session.wasm tests/inferlets/chat-session/Pie.toml
+./target/release/pie-client run chat-session
 ```

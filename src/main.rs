@@ -10,10 +10,16 @@ use std::time::Instant;
 struct Args {
     /// Path to the inferlet (.wasm component). Not needed with `--serve`.
     inferlet: Option<String>,
-    /// Serve inferlets sent by `pie-client` on this address, instead of
-    /// running one.
+    /// UPDATED
+    /// Serve programs to `pie-client` on this address, instead of running
+    /// one.
     #[arg(long)]
     serve: Option<String>,
+    /// NEW
+    /// Where installed programs are kept, with `--serve`. Defaults to
+    /// `~/.pie-tutorial/programs`.
+    #[arg(long)]
+    programs: Option<std::path::PathBuf>,
     /// Hugging Face model id or local directory.
     #[arg(long, default_value = "Qwen/Qwen3-0.6B")]
     model: String,
@@ -49,7 +55,13 @@ async fn main() -> Result<()> {
         cpu: args.cpu,
     })?;
     if let Some(addr) = &args.serve {
-        return runtime::server::serve(host, addr).await;
+        let home = std::env::var("HOME").context("HOME is not set")?;
+        let dir = args
+            .programs
+            .clone()
+            .unwrap_or_else(|| format!("{home}/.pie-tutorial/programs").into());
+        let programs = runtime::inferlet::Programs::open(dir)?;
+        return gateway::serve(host, std::sync::Arc::new(programs), addr).await;
     }
     let component = host.load(args.inferlet.as_deref().context("give an inferlet or --serve")?)?;
     let session = terminal();

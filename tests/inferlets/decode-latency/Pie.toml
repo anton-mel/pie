@@ -1,0 +1,4 @@
+[package]
+name = "decode-latency"
+version = "0.1.0"
+description = "Measure how steadily tokens come out"

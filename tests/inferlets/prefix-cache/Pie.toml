@@ -1,0 +1,4 @@
+[package]
+name = "prefix-cache"
+version = "0.1.0"
+description = "Many inferlets, one long shared prompt, computed once"

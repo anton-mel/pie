@@ -1,56 +1,113 @@
-//! `pie-client`: send an inferlet to a running `pie --serve` and talk to it.
+//! `pie-client`: install programs on a running `pie --serve`, and run them
+//! by name.
 //!
-//! Each line typed on stdin is a message for the inferlet; its messages are
-//! printed as they arrive, then its result. The protocol is in
-//! `runtime/src/server.rs`.
+//! While a program runs, each line typed on stdin is a message for it, and
+//! its messages are printed as they arrive, then its result. The messages
+//! themselves are in `client-api`.
 
 use anyhow::{Context, Result, bail};
-use clap::Parser;
-use serde_json::{Value, json};
-use std::io::{BufRead, BufReader, Write};
-use std::net::{Shutdown, TcpStream};
+use clap::{Parser, Subcommand};
+use client_api::{ClientMessage, Manifest, ServerMessage, VERSION};
+use futures_util::{SinkExt, StreamExt};
+use std::io::{BufRead, Write};
+use std::path::PathBuf;
+use tokio_tungstenite::tungstenite::Message;
 
 #[derive(Parser)]
 struct Args {
-    /// Path to the inferlet (.wasm component).
-    inferlet: String,
     /// Address of `pie --serve`.
     #[arg(long, default_value = "127.0.0.1:9123")]
     server: String,
-    /// Arguments passed to the inferlet.
-    #[arg(last = true)]
-    args: Vec<String>,
+    #[command(subcommand)]
+    command: Command,
 }
 
-fn main() -> Result<()> {
-    let args = Args::parse();
-    let wasm = std::fs::read(&args.inferlet).with_context(|| format!("reading {}", args.inferlet))?;
-    let mut conn = TcpStream::connect(&args.server).with_context(|| format!("connecting to {}", args.server))?;
-    writeln!(conn, "{}", json!({ "args": args.args, "wasm": wasm.len() }))?;
-    conn.write_all(&wasm)?;
+#[derive(Subcommand)]
+enum Command {
+    /// Install a program, so it can be run by the name in its manifest.
+    Install {
+        /// The inferlet (.wasm component).
+        wasm: PathBuf,
+        /// Its manifest (Pie.toml).
+        manifest: PathBuf,
+    },
+    /// Run an installed program.
+    Run {
+        program: String,
+        /// Arguments passed to the program.
+        #[arg(last = true)]
+        args: Vec<String>,
+    },
+}
 
-    // Forward stdin, one message per line; closing stdin ends the messages.
-    let mut to_server = conn.try_clone()?;
-    std::thread::spawn(move || {
-        for line in std::io::stdin().lock().lines().map_while(Result::ok) {
-            if writeln!(to_server, "{}", Value::String(line)).is_err() {
-                return;
+#[tokio::main]
+async fn main() -> Result<()> {
+    let args = Args::parse();
+    let url = format!("ws://{}", args.server);
+    let (ws, _) = tokio_tungstenite::connect_async(&url)
+        .await
+        .with_context(|| format!("connecting to {url}"))?;
+    let (mut tx, mut rx) = ws.split();
+    let mut next = async || -> Result<ServerMessage> {
+        loop {
+            match rx.next().await {
+                Some(Ok(Message::Text(text))) => return Ok(serde_json::from_str(&text)?),
+                Some(Ok(Message::Ping(_) | Message::Pong(_))) => continue,
+                _ => bail!("the server closed the connection"),
             }
         }
-        let _ = to_server.shutdown(Shutdown::Write);
-    });
+    };
+    match next().await? {
+        ServerMessage::Hello { version } if version == VERSION => {}
+        other => bail!("expected protocol version {VERSION}, got {other:?}"),
+    }
+    let send = |m: &ClientMessage| Message::text(serde_json::to_string(m).unwrap());
 
-    for line in BufReader::new(conn).lines() {
-        let value: Value = serde_json::from_str(&line?)?;
-        if let Some(message) = value["message"].as_str() {
-            print!("{message}");
-            std::io::stdout().flush()?;
-        } else if let Some(result) = value["result"].as_str() {
-            println!("{result}");
-            std::process::exit(0);
-        } else if let Some(error) = value["error"].as_str() {
-            bail!("{error}");
+    match args.command {
+        Command::Install { wasm, manifest } => {
+            let text = std::fs::read_to_string(&manifest).with_context(|| format!("reading {}", manifest.display()))?;
+            let manifest = Manifest::parse(&text)?;
+            let wasm = std::fs::read(&wasm).with_context(|| format!("reading {}", wasm.display()))?;
+            tx.send(send(&ClientMessage::Install { manifest })).await?;
+            tx.send(Message::binary(wasm)).await?;
+            match next().await? {
+                ServerMessage::Installed { program, version } => println!("installed {program} {version}"),
+                ServerMessage::Error { message } => bail!("{message}"),
+                other => bail!("unexpected {other:?}"),
+            }
+        }
+        Command::Run { program, args } => {
+            tx.send(send(&ClientMessage::Launch { program, args })).await?;
+            // Forward stdin, one message per line, then say there are no more.
+            let (lines, mut to_send) = tokio::sync::mpsc::unbounded_channel();
+            std::thread::spawn(move || {
+                for line in std::io::stdin().lock().lines().map_while(Result::ok) {
+                    let _ = lines.send(ClientMessage::Message { text: line });
+                }
+                let _ = lines.send(ClientMessage::Close);
+            });
+            tokio::spawn(async move {
+                while let Some(message) = to_send.recv().await {
+                    if tx.send(send(&message)).await.is_err() {
+                        break;
+                    }
+                }
+            });
+            loop {
+                match next().await? {
+                    ServerMessage::Message { text } => {
+                        print!("{text}");
+                        std::io::stdout().flush()?;
+                    }
+                    ServerMessage::Result { value } => {
+                        println!("{value}");
+                        std::process::exit(0);
+                    }
+                    ServerMessage::Error { message } => bail!("{message}"),
+                    other => bail!("unexpected {other:?}"),
+                }
+            }
         }
     }
-    bail!("the server closed the connection")
+    Ok(())
 }

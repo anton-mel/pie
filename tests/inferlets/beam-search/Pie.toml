@@ -1,0 +1,4 @@
+[package]
+name = "beam-search"
+version = "0.1.0"
+description = "Beam search, written as an inferlet"

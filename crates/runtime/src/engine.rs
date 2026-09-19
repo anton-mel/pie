@@ -78,7 +78,6 @@ impl Pool {
 }
 
 impl Engine {
-    /// UPDATED
     /// Takes the backend as an `::engine::Engine`, not a model.
     pub fn new(
         model: Box<dyn ::engine::Engine>,
