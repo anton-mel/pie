@@ -25,7 +25,6 @@ pub struct Config {
     pub policy: runtime::inferlet::Policy,
 }
 
-/// UPDATED
 /// Refuses an unsupported model from its config, before fetching weights.
 /// Load the model and start the runtime on it.
 pub fn start(config: &Config) -> Result<Arc<Host>> {

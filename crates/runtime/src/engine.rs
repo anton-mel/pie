@@ -59,7 +59,6 @@ pub struct Engine {
     index: Mutex<Index>,
     /// Every full page computed so far, by the chain hash of its prefix.
     prefixes: Mutex<crate::store::Prefixes>,
-    /// NEW
     pub metrics: Arc<crate::telemetry::Metrics>,
 }
 
@@ -130,7 +129,6 @@ impl Engine {
         }
     }
 
-    /// NEW
     /// Everything counted so far, and the pool as it is now.
     pub fn render_metrics(&self) -> String {
         let (free, total) = {

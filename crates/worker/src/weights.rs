@@ -15,7 +15,6 @@ pub struct Files {
     pub eos: Vec<u32>,
 }
 
-/// NEW
 /// The model's family, from its config alone: known before its weights are
 /// fetched.
 pub fn model_type(model: &str) -> Result<String> {

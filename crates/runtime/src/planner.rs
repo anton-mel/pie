@@ -17,7 +17,6 @@ pub struct Planner {
     pub freed: Arc<Notify>,
     /// Wakes evicted inferlets when another one finishes.
     exited: Notify,
-    /// NEW
     /// Where evictions are counted.
     metrics: Arc<crate::telemetry::Metrics>,
 }
@@ -36,7 +35,6 @@ struct Member {
 }
 
 impl Planner {
-    /// UPDATED
     /// Takes the counters to count evictions in.
     pub fn new(metrics: Arc<crate::telemetry::Metrics>) -> Self {
         let inner = Inner {

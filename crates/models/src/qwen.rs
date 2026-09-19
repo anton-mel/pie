@@ -228,6 +228,13 @@ struct Decode {
     mask: Tensor,
     b: usize,
     len: usize,
+    /// NEW
+    /// The same sequences as page tables, for the kernel: every sequence's
+    /// pages one after another, where each starts, and each one's length.
+    pages: Vec<u32>,
+    page_start: Vec<u32>,
+    kv_len: Vec<u32>,
+    page_size: usize,
 }
 
 struct Prefill {
@@ -286,12 +293,21 @@ impl Plan {
                 order_src.push(offsets[i]);
             }
             let rows: Vec<u32> = singles.iter().map(|&i| offsets[i] as u32).collect();
+            let (mut pages, mut page_start) = (vec![], vec![]);
+            for &i in &singles {
+                page_start.push(pages.len() as u32);
+                pages.extend(&seqs[i].pages[..seqs[i].kv_len.div_ceil(ps)]);
+            }
             Some(Decode {
                 rows: Tensor::new(rows, device)?,
                 slots: Tensor::new(slots, device)?,
                 mask: Tensor::from_vec(mask, (b, 1, 1, len), device)?,
                 b,
                 len,
+                pages,
+                page_start,
+                kv_len: singles.iter().map(|&i| seqs[i].kv_len as u32).collect(),
+                page_size: ps,
             })
         };
         let mut prefill = vec![];
@@ -326,12 +342,28 @@ impl Plan {
     }
 }
 
+/// UPDATED
+/// Uses our Metal kernel when it can.
 /// Attention of all single-token sequences at once: one gather of their
 /// cache slots, one batched matmul, one softmax.
 fn attend_decode(q: &Tensor, kc: &Tensor, vc: &Tensor, d: &Decode, nkv: usize) -> Result<Tensor> {
     let (_, nh, hd) = q.dims3()?;
     let (b, len, group) = (d.b, d.len, nh / nkv);
-    let q = q.contiguous()?.index_select(&d.rows, 0)?.reshape((b, nkv, group, hd))?;
+    let q = q.contiguous()?.index_select(&d.rows, 0)?;
+    // On Metal, our own kernel reads the pages where they are (chapter 24).
+    // `PIE_GATHER_ATTENTION=1` keeps the gather below, for comparison.
+    #[cfg(feature = "metal")]
+    if q.device().is_metal() && std::env::var_os("PIE_GATHER_ATTENTION").is_none() {
+        let op = crate::paged_attention::PagedDecode {
+            pages: d.pages.clone(),
+            page_start: d.page_start.clone(),
+            kv_len: d.kv_len.clone(),
+            kv_heads: nkv,
+            page_size: d.page_size,
+        };
+        return Ok(q.apply_op3_no_bwd(kc, vc, &op)?.reshape((b, nh * hd))?);
+    }
+    let q = q.reshape((b, nkv, group, hd))?;
     let gather = |c: &Tensor| -> Result<Tensor> {
         Ok(c.index_select(&d.slots, 0)?
             .reshape((b, len, nkv, hd))?

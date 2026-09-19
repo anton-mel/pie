@@ -19,7 +19,6 @@ struct Cli {
     command: Command,
 }
 
-/// UPDATED
 /// Subcommands, as in the reference.
 #[derive(Subcommand)]
 enum Command {
@@ -62,7 +61,6 @@ enum Command {
     Config(ConfigCommand),
 }
 
-/// NEW
 #[derive(Subcommand)]
 enum ModelCommand {
     /// Fetch a model and check the engine can run it.
@@ -71,7 +69,6 @@ enum ModelCommand {
     List,
 }
 
-/// NEW
 #[derive(Subcommand)]
 enum ConfigCommand {
     /// Write the defaults to the config file.
@@ -83,7 +80,6 @@ enum ConfigCommand {
     Show,
 }
 
-/// NEW
 /// Overrides of the config file, for one command.
 #[derive(Args)]
 struct EngineArgs {

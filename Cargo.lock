@@ -2295,8 +2295,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "candle-core",
+ "candle-metal-kernels",
  "candle-nn",
  "engine",
+ "objc2-metal",
  "serde",
 ]
 

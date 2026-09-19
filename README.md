@@ -1,62 +1,54 @@
-# Chapter #23: Config, Model Catalog and Metrics
+# Chapter #24: Our Own GPU Kernel
 
-Until chapter 22, `pie` was configured by flags alone, loaded whatever model
-id it was given and found out only while loading whether it could run it,
-and reported what it was doing with `eprintln!`.
+Until chapter 23, candle did all the GPU work. For attention while decoding
+(chapter 14) that meant gathering every sequence's cached keys and values
+into a new tensor, every step, in every layer, and only then multiplying.
+The longer the context, the more was copied.
 
-In chapter 23 it gets the operational side of the reference:
+In chapter 24 decoding attention on Metal runs in a kernel of our own
+(`crates/models/src/paged_attention.rs`), as the reference has for CUDA,
+Metal, Vulkan and WebGPU. It is written in Metal Shading Language, compiled
+when first used, and plugged into candle as a custom op. One threadgroup
+takes one sequence and one query head. It walks the sequence's page table
+and reads each key and value straight from its slot in the cache, so
+nothing is copied. Scores are taken in blocks of 128 positions with a
+running maximum and sum (online softmax, as in flash decoding), so its
+memory does not grow with the context.
 
-- **Subcommands.** `pie run`, `pie serve`, `pie model`, `pie config`, as in
-  the reference (`src/main.rs`).
-- **A config file.** `pie config init` writes the defaults to
-  `~/.pie-tutorial/config.toml` (`crates/bootstrap`): the model, the KV pool,
-  the step budget, the server address, the sandbox. Flags override it for
-  one command, and `pie config show` prints what is in effect.
-- **A model catalog.** `pie model import Qwen/Qwen3-0.6B` fetches a model
-  once and records it under a short name in `~/.pie-tutorial/models.toml`
-  (`src/catalog.rs`); `pie model list` shows them, and `--model Qwen3-0.6B`
-  takes the name. A model is checked from its config before any weights are
-  fetched: the engine must support its family (`models::supports`) and
-  there must be a chat template for it. Anything else is refused by name:
-  `HuggingFaceTB/SmolLM2-135M-Instruct is a "llama" model, which this engine
-  cannot run`, after fetching 8 KB.
-- **Metrics.** `pie serve --metrics ADDR` serves `/metrics` in Prometheus
-  text format (`crates/runtime/src/telemetry.rs`): steps, tokens, forwards,
-  evictions, prefix pages reused, free and recorded pages.
+Its unit test runs it in f32 on random data, with scattered pages, three
+sequence lengths and grouped-query heads, and compares it with plain
+attention computed on the CPU: they agree to within 1e-4. Greedy output is
+the same as before. Median of three runs, gather against kernel:
 
-```
-pie_steps_total 40
-pie_tokens_total 397
-pie_forwards_total 60
-pie_evictions_total 0
-pie_prefix_pages_reused_total 18
-pie_kv_pages_free 1002
-```
+| | gather | kernel |
+|---|---|---|
+| beam search, 8 beams | 604 ms | 535 ms |
+| beam search, 16 beams | 888 ms | 753 ms |
+| 16 inferlets, 48 tokens each | 1800 ms | 1500 ms |
+| 4 inferlets, 100 tokens after ~1,500 | 10.9 s | 7.1 s |
 
-Everything lives in `~/.pie-tutorial`, so it does not touch an installation
-of the reference Pie in `~/.pie`.
+`PIE_GATHER_ATTENTION=1` switches back to the gather, for comparison.
+
+> [!NOTE]
+> The kernel sums in f32, the gather in bf16, so sampled outputs can take a
+> different path after a close call. The reference has kernels for every
+> operation of the model on four GPU APIs; here there is one, for Metal,
+> and candle still does the rest. Prefill keeps the old path.
 
 ## Read Order
 
-Read `crates/bootstrap/src/lib.rs`, then `src/catalog.rs` and the
-subcommands in `src/main.rs`. Then `model_type` in
-`crates/worker/src/weights.rs` and the check in `worker::start`. Finally
-`crates/runtime/src/telemetry.rs`, where the scheduler and planner count,
-and `render_metrics` in `crates/runtime/src/engine.rs`.
+Read the Metal source at the top of `crates/models/src/paged_attention.rs`,
+then `PagedDecode::metal_fwd` and the test at the end. Then where
+`attend_decode` in `crates/models/src/qwen.rs` uses it.
 
 ## Run MacOS
 
 ```bash
 rustup target add wasm32-wasip2
+cargo test --release -p models --features metal
 cargo build --release -p pie --features metal
-cargo build --release -p client
-cargo build --release -p text-completion --target wasm32-wasip2
+cargo build --release -p beam-search --target wasm32-wasip2
 
-./target/release/pie config init
-./target/release/pie model import Qwen/Qwen3-0.6B
-./target/release/pie model list
-./target/release/pie run --model Qwen3-0.6B target/wasm32-wasip2/release/text_completion.wasm -- "The capital of France is" 24
-
-./target/release/pie serve --metrics 127.0.0.1:9124
-curl http://127.0.0.1:9124/metrics
+./target/release/pie run target/wasm32-wasip2/release/beam_search.wasm -- "Once upon a time" 16 32
+PIE_GATHER_ATTENTION=1 ./target/release/pie run target/wasm32-wasip2/release/beam_search.wasm -- "Once upon a time" 16 32
 ```

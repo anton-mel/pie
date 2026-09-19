@@ -58,7 +58,6 @@ impl Job {
 
 /// Runs its steps on an `Engine`.
 /// Orders jobs by pipeline instead of by the pages they share.
-/// UPDATED
 /// Counts steps, tokens and forwards in `metrics`.
 pub fn run(
     mut model: Box<dyn Engine>,
