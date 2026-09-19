@@ -27,3 +27,6 @@ feature, and explains in its README.
    `forward` returns a distribution after any chosen tokens, not just the
    last. An inferlet checks several guessed tokens in one forward and rolls
    back the wrong ones.
+7. **Sampling** ([`feat/sampling`](../../tree/feat/sampling)): temperature,
+   top-p and min-p written in the inferlet, with no engine change. Several
+   samples of one prompt share its pages and decode in one batch.
