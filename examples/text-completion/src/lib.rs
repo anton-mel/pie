@@ -1,7 +1,6 @@
 //! Greedy completion of a prompt.
-// Example: 
-// 
-// `pie text_completion.wasm -- "prompt" [max_tokens]`.
+//!
+//! Example: `pie text_completion.wasm -- "prompt" [max_tokens]`.
 
 use inferlet::{Context, greedy};
 

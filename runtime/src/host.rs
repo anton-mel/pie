@@ -49,7 +49,7 @@ impl model::Host for State {
     }
 
     async fn alloc_pages(&mut self, n: u32) -> Result<Vec<u32>, String> {
-        // for now, we just allocate and hold the pages for the lifetime of the instance
+        // Owned until `free_pages` or exit.
         let pages = self.engine.alloc(n).ok_or("out of KV pages")?;
         self.pages.extend(&pages);
         Ok(pages)

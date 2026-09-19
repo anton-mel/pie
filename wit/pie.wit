@@ -7,7 +7,7 @@ interface model {
     /// The inferlet uses it to allocate pages and compute positions.
     kv-page-size: func() -> u32;
 
-    // The pages belong to this inferlet until it frees / exits.
+    /// The pages belong to this inferlet until it frees them or exits.
     alloc-pages: func(n: u32) -> result<list<u32>, string>;
     /// Return pages to the runtime's shared pool.
     free-pages: func(pages: list<u32>);
@@ -41,7 +41,7 @@ interface model {
 
 /// The inferlet's entry point.
 interface run {
-    /// Input: tokens, number of tokens to generate, and top-k for sampling.
+    /// Args come from the command line after `--`; the inferlet decides what they mean.
     run: func(args: list<string>) -> result<string, string>;
 }
 
