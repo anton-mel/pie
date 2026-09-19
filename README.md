@@ -1,51 +1,47 @@
-# Chapter #19: Sandbox
+# Chapter #20: Prefix Trie
 
-Until chapter 18, an inferlet could reach nothing but the model and stdio:
-no files, no network. That is safe, but an agent that uses tools needs to
-read a document or call a service.
+Until chapter 19, inferlets could share a prompt only through the index of
+chapter 9: one publishes under a key, the others open that key. They had to
+agree on the key, and the shared text had to be the whole key's text.
 
-In chapter 19 each instance runs under a policy
-(`crates/runtime/src/inferlet/sandbox.rs`) that decides what it may reach
-besides the model. By default, still nothing. `--allow-dir DIR` lets
-inferlets read `DIR`, which they see as `/data` (`--allow-write` also lets
-them change it), and `--allow-connect IP:PORT` lets them open TCP
-connections to that address and no other. The policy becomes the instance's
-WASI context, so the inferlet uses ordinary file and socket calls, and the
-runtime answers them or refuses them.
+In chapter 20 prompts are shared by their tokens, as in the reference and in
+vLLM. Every full page of KV is recorded under a chain hash: the hash of its
+tokens together with the chain hash of the page before it
+(`crates/runtime/src/store.rs`). Two sequences that start with the same
+tokens get the same chain, like two paths through a trie that share their
+start. `from-prefix` (`wit/working-set.wit`) returns a working set holding
+the longest recorded prefix of a list of tokens, and `Context::with_tokens`
+builds a context on it: only the rest of the prompt runs.
 
-`tests/inferlets/ask-docs` answers a question about a
-document it fetches itself, from `/data` or over HTTP:
+In `tests/inferlets/auto-prefix` every request is a long system prompt and
+its own question. Asked three different questions in turn, the second and
+third reuse 288 of about 310 prompt tokens: the system prompt, found by its
+tokens, with nothing published and no key. Asked the same question again,
+it reuses 304 of 312 and answers in 132ms instead of 197ms, with the same
+answer.
 
-| policy | `/data/notes.txt` | `http://127.0.0.1:8765/notes.txt` |
-|---|---|---|
-| none | no such file | permission denied |
-| `--allow-dir docs` | answered | permission denied |
-| `--allow-connect 127.0.0.1:8765` | no such file | answered |
-
-With `--allow-connect 127.0.0.1:8765`, the same server on port 8766 is
-refused, and with `--allow-dir`, nothing outside `/data` is visible.
-
-> [!NOTE]
-> The policy is set when `pie` starts and applies to every instance. The
-> reference sets it per instance, with allow and deny rules, and also links
-> WASI HTTP, so inferlets can make HTTP requests without writing them by
-> hand.
+> [!WARNING]
+> A page's KV depends on every token before it, not only on its own. So
+> only clean working sets record their pages: none of their pages were
+> discarded (chapter 8), and every token sits at its own position. Pages are
+> recorded only after the model has written them, so no one can read them
+> too early, and recorded pages are the first to go when memory runs low.
 
 ## Read Order
 
-Read `Policy` in `crates/runtime/src/inferlet/sandbox.rs`, then where
-`Host::run_once` builds each instance's WASI context from it in
-`crates/runtime/src/inferlet.rs`, and the new flags in `src/main.rs`.
-Finally `tests/inferlets/ask-docs`.
+Read `crates/runtime/src/store.rs`, then `record`, `lookup` and
+`evict_oldest` in `crates/runtime/src/engine.rs`. Then where `forward` in
+`crates/runtime/src/inferlet/host/forward.rs` tracks tokens and records
+pages once the model has run (`on_done`), and `from_prefix` in
+`host/kv_working_set.rs`. Finally `Context::with_tokens` in
+`crates/inferlet/src/lib.rs` and `tests/inferlets/auto-prefix`.
 
 ## Run MacOS
 
 ```bash
 rustup target add wasm32-wasip2
 cargo build --release -p pie --features metal
-cargo build --release -p ask-docs --target wasm32-wasip2
+cargo build --release -p auto-prefix --target wasm32-wasip2
 
-mkdir -p docs && echo "The wifi password is sunflower42." > docs/notes.txt
-./target/release/pie target/wasm32-wasip2/release/ask_docs.wasm -- /data/notes.txt "What is the wifi password?"
-./target/release/pie --allow-dir docs target/wasm32-wasip2/release/ask_docs.wasm -- /data/notes.txt "What is the wifi password?"
+./target/release/pie -i 3 --sequential target/wasm32-wasip2/release/auto_prefix.wasm -- "How long can I keep a DVD?" 24
 ```

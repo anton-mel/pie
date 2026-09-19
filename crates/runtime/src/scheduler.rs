@@ -57,6 +57,8 @@ impl Job {
 }
 
 /// Runs its steps on an `Engine`.
+/// UPDATED
+/// Runs each finished request's `on_done` before answering it.
 pub fn run(mut model: Box<dyn Engine>, mut rx: mpsc::UnboundedReceiver<Vec<Request>>, step_tokens: usize) {
     let ps = model.page_size();
     let mut jobs: Vec<Job> = vec![];
@@ -139,7 +141,12 @@ pub fn run(mut model: Box<dyn Engine>, mut rx: mpsc::UnboundedReceiver<Vec<Reque
         for job in finished {
             let result = match job.error {
                 Some(e) => Err(e),
-                None => Ok(job.rows),
+                None => {
+                    if let Some(on_done) = job.request.on_done {
+                        on_done();
+                    }
+                    Ok(job.rows)
+                }
             };
             let _ = job.request.reply.send(result);
         }

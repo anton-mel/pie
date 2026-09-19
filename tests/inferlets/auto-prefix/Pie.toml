@@ -1,0 +1,4 @@
+[package]
+name = "auto-prefix"
+version = "0.1.0"
+description = "Shared prompt prefixes found by their tokens, with no key"

@@ -21,7 +21,6 @@ pub struct Config {
     pub step_tokens: usize,
     /// Run on the CPU instead of the GPU.
     pub cpu: bool,
-    /// NEW
     /// What inferlets may reach besides the model.
     pub policy: runtime::inferlet::Policy,
 }

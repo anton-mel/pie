@@ -75,6 +75,23 @@ impl Context {
         Ok(ctx)
     }
 
+    /// NEW
+    /// A context holding `tokens`, reusing the KV of the longest prefix of
+    /// them that any inferlet has already computed: only the rest runs, on
+    /// the next forward. Nothing needs to be agreed on beforehand.
+    pub fn with_tokens(tokens: &[u32]) -> Self {
+        let (kv, covered) = KvWorkingSet::from_prefix(tokens);
+        // Always leave the last token to run: its distribution is the point.
+        let covered = (covered as usize).min(tokens.len().saturating_sub(1));
+        Self {
+            tokens: tokens[..covered].to_vec(),
+            pending: tokens[covered..].to_vec(),
+            kv,
+            page_size: model::kv_page_size(),
+            pos: covered as u32,
+        }
+    }
+
     pub fn fill(&mut self, text: &str) {
         self.pending.extend(tokenizer::tokenize(text));
     }

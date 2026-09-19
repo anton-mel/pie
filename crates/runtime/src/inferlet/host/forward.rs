@@ -6,6 +6,8 @@ use ::engine::Seq;
 use wasmtime::component::Resource;
 
 impl forward::Host for State {
+    /// UPDATED
+    /// Also records full pages of clean working sets for sharing.
     async fn forward(
         &mut self,
         kv: Resource<KvWorkingSet>,
@@ -48,6 +50,25 @@ impl forward::Host for State {
             .map(|(i, to)| (std::mem::replace(&mut ws.pages[i], to), to))
             .collect();
 
+        // Remember which token is in each slot, and whether this is still a
+        // clean prefix. If so, once the model has run it, its full pages are
+        // recorded for others to share.
+        let start = kv_len as usize - tokens.len();
+        if positions.iter().enumerate().any(|(i, &p)| p as usize != start + i) || ws.tokens.len() < start {
+            ws.clean = false;
+        }
+        ws.tokens.truncate(start);
+        ws.tokens.resize(start, 0);
+        ws.tokens.extend(&tokens);
+        let on_done: Option<Box<dyn FnOnce() + Send>> = if ws.clean {
+            let full = kv_len as usize / ps as usize;
+            let hashes = crate::store::chain(&ws.tokens[..full * ps as usize], ps as usize);
+            let (engine, pages) = (self.engine.clone(), ws.pages[..full].to_vec());
+            Some(Box::new(move || engine.record(&hashes, &pages)))
+        } else {
+            None
+        };
+
         let seq = Seq {
             copies,
             tokens,
@@ -57,7 +78,7 @@ impl forward::Host for State {
             kv_len: kv_len as usize,
         };
 
-        let (request, reply) = self.engine.request(seq, top_k as usize, allowed);
+        let (request, reply) = self.engine.request(seq, top_k as usize, allowed, on_done);
 
         self.unsent.push(request);
 

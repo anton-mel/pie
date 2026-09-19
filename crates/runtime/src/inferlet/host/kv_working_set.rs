@@ -11,6 +11,8 @@ impl working_set::HostKvWorkingSet for State {
         let ws = KvWorkingSet {
             engine: self.engine.clone(),
             pages: vec![],
+            tokens: vec![],
+            clean: true,
         };
         self.table.push(ws).expect("resource table full")
     }
@@ -26,11 +28,15 @@ impl working_set::HostKvWorkingSet for State {
     }
 
     async fn fork(&mut self, ws: Resource<KvWorkingSet>) -> Resource<KvWorkingSet> {
-        let pages = self.table.get(&ws).map_or(vec![], |ws| ws.pages.clone());
+        let (pages, tokens, clean) = self.table.get(&ws).map_or((vec![], vec![], false), |ws| {
+            (ws.pages.clone(), ws.tokens.clone(), ws.clean)
+        });
         self.engine.share(&pages);
         let child = KvWorkingSet {
             engine: self.engine.clone(),
             pages,
+            tokens,
+            clean,
         };
         self.table.push(child).expect("resource table full")
     }
@@ -43,6 +49,11 @@ impl working_set::HostKvWorkingSet for State {
         }
         // A forward still queued on these pages holds them until it has run.
         self.engine.free(ws.pages.drain(start..end));
+        let ps = self.engine.page_size as usize;
+        let (from, to) = ((start * ps).min(ws.tokens.len()), (end * ps).min(ws.tokens.len()));
+        ws.tokens.drain(from..to);
+        // What follows the gap was computed with the gap: not a clean prefix.
+        ws.clean = false;
         Ok(())
     }
 
@@ -54,15 +65,31 @@ impl working_set::HostKvWorkingSet for State {
 
     async fn from_index(&mut self, key: String) -> Option<Resource<KvWorkingSet>> {
         let pages = self.engine.open(&key)?;
+        // Its tokens are not known here, so its pages are never recorded.
         let ws = KvWorkingSet {
             engine: self.engine.clone(),
             pages,
+            tokens: vec![],
+            clean: false,
         };
         Some(self.table.push(ws).expect("resource table full"))
     }
 
     async fn remove_index(&mut self, key: String) -> bool {
         self.engine.unpublish(&key)
+    }
+
+    /// NEW
+    async fn from_prefix(&mut self, tokens: Vec<u32>) -> (Resource<KvWorkingSet>, u32) {
+        let pages = self.engine.lookup(&tokens);
+        let covered = pages.len() * self.engine.page_size as usize;
+        let ws = KvWorkingSet {
+            engine: self.engine.clone(),
+            pages,
+            tokens: tokens[..covered].to_vec(),
+            clean: true,
+        };
+        (self.table.push(ws).expect("resource table full"), covered as u32)
     }
 
     async fn drop(&mut self, ws: Resource<KvWorkingSet>) -> wasmtime::Result<()> {

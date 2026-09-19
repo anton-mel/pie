@@ -31,15 +31,12 @@ struct Args {
     /// Most tokens in one model step. Longer prefills are split.
     #[arg(long, default_value_t = 256)]
     step_tokens: usize,
-    /// NEW
     /// A directory inferlets may read, as `/data`.
     #[arg(long)]
     allow_dir: Option<std::path::PathBuf>,
-    /// NEW
     /// Let inferlets also write in `--allow-dir`.
     #[arg(long)]
     allow_write: bool,
-    /// NEW
     /// An address (host:port) inferlets may open TCP connections to.
     #[arg(long)]
     allow_connect: Vec<String>,

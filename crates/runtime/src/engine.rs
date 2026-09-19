@@ -23,6 +23,9 @@ pub struct Request {
     /// Token ids the distributions are restricted to, if any.
     pub allowed: Option<Vec<u32>>,
     pub reply: oneshot::Sender<Result<Vec<Distribution>, String>>,
+    /// NEW
+    /// Run once the model has run it, before its pages are released.
+    pub on_done: Option<Box<dyn FnOnce() + Send>>,
     /// Released when the request is dropped, after the model has run it.
     _hold: Hold,
 }
@@ -47,6 +50,9 @@ pub struct Engine {
     pub planner: Planner,
     /// Published working sets, by key.
     index: Mutex<Index>,
+    /// NEW
+    /// Every full page computed so far, by the chain hash of its prefix.
+    prefixes: Mutex<crate::store::Prefixes>,
 }
 
 /// Pages published under a key, and when each key was last used. The index
@@ -102,6 +108,7 @@ impl Engine {
             queue,
             planner,
             index: Mutex::default(),
+            prefixes: Mutex::default(),
         }
     }
 
@@ -160,8 +167,22 @@ impl Engine {
         old.map(|(pages, _)| self.free(pages)).is_some()
     }
 
-    /// Drop the entry used longest ago. False if the index is empty.
+    /// UPDATED
+    /// Drop the recorded prefix page used longest ago, or else the index
+    /// entry used longest ago. False if there is nothing to drop.
     fn evict_oldest(&self) -> bool {
+        let mut prefixes = self.prefixes.lock().unwrap();
+        let oldest = prefixes
+            .pages
+            .iter()
+            .min_by_key(|(_, (_, used))| *used)
+            .map(|(h, _)| *h);
+        if let Some(hash) = oldest {
+            let (page, _) = prefixes.pages.remove(&hash).unwrap();
+            self.free([page]);
+            return true;
+        }
+        drop(prefixes);
         let mut index = self.index.lock().unwrap();
         let Some(key) = index
             .entries
@@ -190,8 +211,17 @@ impl Engine {
         self.pool.lock().unwrap().free(pages);
     }
 
-    /// Takes the `allowed` restriction along with the request.
-    pub fn request(&self, seq: Seq, top_k: usize, allowed: Option<Vec<u32>>) -> (Request, Reply) {
+    /// UPDATED
+    /// A request for one forward, and where its result will arrive. It holds
+    /// `seq.pages`; for copy sources the caller hands over a hold it has.
+    /// `on_done` runs once the model has run it.
+    pub fn request(
+        &self,
+        seq: Seq,
+        top_k: usize,
+        allowed: Option<Vec<u32>>,
+        on_done: Option<Box<dyn FnOnce() + Send>>,
+    ) -> (Request, Reply) {
         self.share(&seq.pages);
         let mut pages = seq.pages.clone();
         pages.extend(seq.copies.iter().map(|&(from, _)| from));
@@ -206,10 +236,45 @@ impl Engine {
                 top_k,
                 allowed,
                 reply,
+                on_done,
                 _hold: hold,
             },
             rx,
         )
+    }
+
+    /// NEW
+    /// Record full pages under the chain hashes of their prefixes (see
+    /// `store`), skipping those already recorded.
+    pub fn record(&self, hashes: &[u64], pages: &[u32]) {
+        let mut prefixes = self.prefixes.lock().unwrap();
+        for (&hash, &page) in hashes.iter().zip(pages) {
+            if !prefixes.pages.contains_key(&hash) {
+                self.share(&[page]);
+                prefixes.clock += 1;
+                let used = prefixes.clock;
+                prefixes.pages.insert(hash, (page, used));
+            }
+        }
+    }
+
+    /// NEW
+    /// The pages of the longest recorded prefix of `tokens`, with one more
+    /// holder each.
+    pub fn lookup(&self, tokens: &[u32]) -> Vec<u32> {
+        let mut prefixes = self.prefixes.lock().unwrap();
+        let mut pages = vec![];
+        for hash in crate::store::chain(tokens, self.page_size as usize) {
+            prefixes.clock += 1;
+            let clock = prefixes.clock;
+            let Some((page, used)) = prefixes.pages.get_mut(&hash) else {
+                break;
+            };
+            *used = clock;
+            pages.push(*page);
+        }
+        self.share(&pages);
+        pages
     }
 
     pub fn send(&self, requests: Vec<Request>) -> Result<(), String> {

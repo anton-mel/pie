@@ -33,6 +33,14 @@ wasmtime::component::bindgen!({
 pub struct KvWorkingSet {
     engine: Arc<Engine>,
     pages: Vec<u32>,
+    /// NEW
+    /// The token in each slot, as far as it is known.
+    tokens: Vec<u32>,
+    /// NEW
+    /// Whether its KV is what a fresh prefill of `tokens` would compute: no
+    /// pages discarded, every token at its slot's position. Only then are its
+    /// full pages recorded for others to share.
+    clean: bool,
 }
 
 impl Drop for KvWorkingSet {
@@ -75,13 +83,11 @@ pub struct Host {
     wasm: Wasm,
     linker: Linker<State>,
     engine: Arc<Engine>,
-    /// NEW
     /// What every instance may reach besides the model.
     policy: Policy,
 }
 
 impl Host {
-    /// UPDATED
     /// Takes the sandbox policy its instances run under.
     pub fn new(engine: Arc<Engine>, policy: Policy) -> Result<Self> {
         let wasm = Wasm::default();
