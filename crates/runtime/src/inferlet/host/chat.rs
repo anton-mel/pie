@@ -4,7 +4,6 @@ use crate::inferlet::State;
 use crate::inferlet::pie::inferlet::chat;
 use chat_template::Role;
 
-/// UPDATED
 /// Renders through the model's template instead of writing ChatML by hand.
 impl chat::Host for State {
     async fn prefix(&mut self) -> Vec<u32> {

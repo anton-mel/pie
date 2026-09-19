@@ -48,7 +48,6 @@ impl Drop for Hold {
 
 pub struct Engine {
     pub tokenizer: Tokenizer,
-    /// NEW
     /// How the model writes a conversation.
     pub template: Box<dyn chat_template::Template>,
     pub eos: Vec<u32>,
@@ -60,6 +59,8 @@ pub struct Engine {
     index: Mutex<Index>,
     /// Every full page computed so far, by the chain hash of its prefix.
     prefixes: Mutex<crate::store::Prefixes>,
+    /// NEW
+    pub metrics: Arc<crate::telemetry::Metrics>,
 }
 
 /// Pages published under a key, and when each key was last used. The index
@@ -95,7 +96,6 @@ impl Pool {
 
 impl Engine {
     /// Takes the backend as an `::engine::Engine`, not a model.
-    /// UPDATED
     /// Takes the model's chat template.
     pub fn new(
         model: Box<dyn ::engine::Engine>,
@@ -107,8 +107,10 @@ impl Engine {
     ) -> Self {
         let page_size = model.page_size() as u32;
         let (queue, rx) = mpsc::unbounded_channel();
-        std::thread::spawn(move || crate::scheduler::run(model, rx, step_tokens));
-        let planner = Planner::new();
+        let metrics = Arc::new(crate::telemetry::Metrics::default());
+        let counters = metrics.clone();
+        std::thread::spawn(move || crate::scheduler::run(model, rx, step_tokens, counters));
+        let planner = Planner::new(metrics.clone());
         Self {
             tokenizer,
             template,
@@ -124,7 +126,19 @@ impl Engine {
             planner,
             index: Mutex::default(),
             prefixes: Mutex::default(),
+            metrics,
         }
+    }
+
+    /// NEW
+    /// Everything counted so far, and the pool as it is now.
+    pub fn render_metrics(&self) -> String {
+        let (free, total) = {
+            let pool = self.pool.lock().unwrap();
+            (pool.free.len(), pool.refs.len())
+        };
+        let recorded = self.prefixes.lock().unwrap().pages.len();
+        self.metrics.render(free, total, recorded)
     }
 
     pub fn alloc(&self, n: u32) -> Option<Vec<u32>> {
@@ -295,6 +309,7 @@ impl Engine {
             *used = clock;
             pages.push(*page);
         }
+        crate::telemetry::Metrics::add(&self.metrics.prefix_pages_reused, pages.len() as u64);
         self.share(&pages);
         pages
     }

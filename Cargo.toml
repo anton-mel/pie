@@ -8,10 +8,15 @@ metal = ["worker/metal"]
 
 [dependencies]
 anyhow = "1"
+bootstrap = { path = "crates/bootstrap" }
+chat-template = { path = "crates/chat-template" }
 clap = { version = "4", features = ["derive"] }
 gateway = { path = "crates/gateway" }
+models = { path = "crates/models" }
 runtime = { path = "crates/runtime" }
+serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
+toml = "1"
 worker = { path = "crates/worker" }
 
 [workspace]

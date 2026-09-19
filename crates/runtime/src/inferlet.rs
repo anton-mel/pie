@@ -110,6 +110,12 @@ impl Host {
         Ok(Component::from_file(&self.wasm, path)?)
     }
 
+    /// NEW
+    /// The runtime's counters and state, in Prometheus text format.
+    pub fn metrics(&self) -> String {
+        self.engine.render_metrics()
+    }
+
     /// Compile an inferlet a client sent.
     pub fn compile(&self, wasm: &[u8]) -> Result<Component> {
         Ok(Component::new(&self.wasm, wasm)?)

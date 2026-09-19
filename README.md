@@ -1,48 +1,62 @@
-# Chapter #22: Chat Templates
+# Chapter #23: Config, Model Catalog and Metrics
 
-Until chapter 21, the chat format was ChatML, written by hand into the host
-(chapter 11). It is right for Qwen and wrong for every other model family.
+Until chapter 22, `pie` was configured by flags alone, loaded whatever model
+id it was given and found out only while loading whether it could run it,
+and reported what it was doing with `eprintln!`.
 
-In chapter 22 the format is a template, picked by the model's config, as in
-the reference. `crates/chat-template` has a `Template` trait and four
-families: ChatML (Qwen), Llama 3, Gemma and DeepSeek V3. The worker reads the
-config's `model_type`, picks the template (`for_model`), and refuses a model
-it has none for. The host's `chat` interface renders through it, so neither
-the host nor the inferlet spells any format.
+In chapter 23 it gets the operational side of the reference:
 
-The interface gains two functions, as in the reference. `prefix` is what a
-conversation starts with: `<|begin_of_text|>` for Llama, `<bos>` for Gemma,
-nothing for Qwen. `system-user` writes a system prompt with the first user
-message, because Gemma has no system turn and folds the system prompt into
-that message. `Context` now holds a system prompt until the first user
-message, and writes the prefix before the first message.
+- **Subcommands.** `pie run`, `pie serve`, `pie model`, `pie config`, as in
+  the reference (`src/main.rs`).
+- **A config file.** `pie config init` writes the defaults to
+  `~/.pie-tutorial/config.toml` (`crates/bootstrap`): the model, the KV pool,
+  the step budget, the server address, the sandbox. Flags override it for
+  one command, and `pie config show` prints what is in effect.
+- **A model catalog.** `pie model import Qwen/Qwen3-0.6B` fetches a model
+  once and records it under a short name in `~/.pie-tutorial/models.toml`
+  (`src/catalog.rs`); `pie model list` shows them, and `--model Qwen3-0.6B`
+  takes the name. A model is checked from its config before any weights are
+  fetched: the engine must support its family (`models::supports`) and
+  there must be a chat template for it. Anything else is refused by name:
+  `HuggingFaceTB/SmolLM2-135M-Instruct is a "llama" model, which this engine
+  cannot run`, after fetching 8 KB.
+- **Metrics.** `pie serve --metrics ADDR` serves `/metrics` in Prometheus
+  text format (`crates/runtime/src/telemetry.rs`): steps, tokens, forwards,
+  evictions, prefix pages reused, free and recorded pages.
 
-Our engine runs only Qwen, so the other three formats cannot be tried on a
-model. Instead, the crate's tests compare each template with the family's
-official chat template, taken from its Hugging Face `tokenizer_config.json`
-and rendered with Jinja for the same conversation. All four match exactly.
-For Qwen, every chat gives the same answers as before.
+```
+pie_steps_total 40
+pie_tokens_total 397
+pie_forwards_total 60
+pie_evictions_total 0
+pie_prefix_pages_reused_total 18
+pie_kv_pages_free 1002
+```
 
-> [!NOTE]
-> The reference also has decoders that follow a reply as it is generated:
-> where thinking starts and ends, and where a tool call begins. Here, the
-> SDK still splits Qwen's `<think>` block out of a finished reply.
+Everything lives in `~/.pie-tutorial`, so it does not touch an installation
+of the reference Pie in `~/.pie`.
 
 ## Read Order
 
-Read `crates/chat-template/src/lib.rs`, with its tests at the end. Then
-`prefix` and `system-user` in `wit/chat.wit`, `chat::Host` in
-`crates/runtime/src/inferlet/host/chat.rs`, where the worker picks the
-template in `crates/worker/src/lib.rs`, and `system`, `user` and `start` in
-`crates/inferlet/src/lib.rs`.
+Read `crates/bootstrap/src/lib.rs`, then `src/catalog.rs` and the
+subcommands in `src/main.rs`. Then `model_type` in
+`crates/worker/src/weights.rs` and the check in `worker::start`. Finally
+`crates/runtime/src/telemetry.rs`, where the scheduler and planner count,
+and `render_metrics` in `crates/runtime/src/engine.rs`.
 
 ## Run MacOS
 
 ```bash
 rustup target add wasm32-wasip2
-cargo test -p chat-template
 cargo build --release -p pie --features metal
-cargo build --release -p chat --target wasm32-wasip2
+cargo build --release -p client
+cargo build --release -p text-completion --target wasm32-wasip2
 
-./target/release/pie target/wasm32-wasip2/release/chat.wasm -- "What is the capital of France?"
+./target/release/pie config init
+./target/release/pie model import Qwen/Qwen3-0.6B
+./target/release/pie model list
+./target/release/pie run --model Qwen3-0.6B target/wasm32-wasip2/release/text_completion.wasm -- "The capital of France is" 24
+
+./target/release/pie serve --metrics 127.0.0.1:9124
+curl http://127.0.0.1:9124/metrics
 ```

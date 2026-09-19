@@ -8,12 +8,27 @@ use tokenizers::Tokenizer;
 
 pub struct Files {
     pub config: models::Config,
-    /// NEW
     /// The model family, as its config names it (`model_type`).
     pub model_type: String,
     pub weights: Vec<PathBuf>,
     pub tokenizer: Tokenizer,
     pub eos: Vec<u32>,
+}
+
+/// NEW
+/// The model's family, from its config alone: known before its weights are
+/// fetched.
+pub fn model_type(model: &str) -> Result<String> {
+    let local = PathBuf::from(model).join("config.json");
+    let path = if local.exists() {
+        local
+    } else {
+        let repo = hf_hub::api::sync::Api::new()?.model(model.to_string());
+        repo.get("config.json")
+            .with_context(|| format!("fetching config.json from {model}"))?
+    };
+    let config: Value = serde_json::from_slice(&std::fs::read(path)?)?;
+    Ok(config["model_type"].as_str().unwrap_or_default().to_string())
 }
 
 impl Files {

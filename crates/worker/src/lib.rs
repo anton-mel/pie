@@ -2,7 +2,7 @@
 //! an engine, and builds the runtime on top. Whoever starts `pie` gets back
 //! a running host, and does not deal with checkpoints or devices.
 
-mod weights;
+pub mod weights;
 
 use anyhow::{Context, Result};
 use candle_core::{DType, Device};
@@ -25,6 +25,8 @@ pub struct Config {
     pub policy: runtime::inferlet::Policy,
 }
 
+/// UPDATED
+/// Refuses an unsupported model from its config, before fetching weights.
 /// Load the model and start the runtime on it.
 pub fn start(config: &Config) -> Result<Arc<Host>> {
     let device = if config.cpu {
@@ -33,6 +35,12 @@ pub fn start(config: &Config) -> Result<Arc<Host>> {
         Device::metal_if_available(0)?
     };
     let dtype = if device.is_cpu() { DType::F32 } else { DType::BF16 };
+    let model_type = weights::model_type(&config.model)?;
+    anyhow::ensure!(
+        models::supports(&model_type),
+        "{} is a {model_type:?} model, which this engine cannot run",
+        config.model
+    );
     let files = weights::Files::find(&config.model)?;
 
     let t = Instant::now();

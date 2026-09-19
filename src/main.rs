@@ -1,95 +1,214 @@
-//! The `pie` binary: start a worker, then run N copies of an inferlet at
-//! once and print each one's output, or serve clients.
+//! The `pie` binary. `pie run` runs an inferlet next to the model and prints
+//! what it returns; `pie serve` serves programs to `pie-client`; `pie model`
+//! and `pie config` look after the model catalog and the config file.
+
+mod catalog;
 
 use anyhow::{Context, Result};
-use clap::Parser;
+use bootstrap::Config;
+use clap::{Args, Parser, Subcommand};
+use runtime::inferlet::Host;
+use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Instant;
 
-/// Parse args.
 #[derive(Parser)]
-struct Args {
-    /// Path to the inferlet (.wasm component). Not needed with `--serve`.
-    inferlet: Option<String>,
-    /// Serve programs to `pie-client` on this address, instead of running
-    /// one.
+#[command(name = "pie")]
+struct Cli {
+    #[command(subcommand)]
+    command: Command,
+}
+
+/// UPDATED
+/// Subcommands, as in the reference.
+#[derive(Subcommand)]
+enum Command {
+    /// Run an inferlet next to the model, and print what it returns.
+    Run {
+        /// Path to the inferlet (.wasm component).
+        inferlet: String,
+        /// How many copies of the inferlet to run at once.
+        #[arg(short, long, default_value_t = 1)]
+        instances: usize,
+        /// Run the copies one after another instead of all at once.
+        #[arg(short, long)]
+        sequential: bool,
+        #[command(flatten)]
+        engine: EngineArgs,
+        /// Arguments passed to the inferlet.
+        #[arg(last = true)]
+        args: Vec<String>,
+    },
+    /// Serve programs to `pie-client`.
+    Serve {
+        /// Where to listen (default from the config: 127.0.0.1:9123).
+        #[arg(long)]
+        addr: Option<String>,
+        /// Where installed programs are kept (default
+        /// `~/.pie-tutorial/programs`).
+        #[arg(long)]
+        programs: Option<PathBuf>,
+        /// Also serve `/metrics` on this address.
+        #[arg(long)]
+        metrics: Option<String>,
+        #[command(flatten)]
+        engine: EngineArgs,
+    },
+    /// The local model catalog.
+    #[command(subcommand)]
+    Model(ModelCommand),
+    /// The config file (`~/.pie-tutorial/config.toml`).
+    #[command(subcommand)]
+    Config(ConfigCommand),
+}
+
+/// NEW
+#[derive(Subcommand)]
+enum ModelCommand {
+    /// Fetch a model and check the engine can run it.
+    Import { model: String },
+    /// List imported models.
+    List,
+}
+
+/// NEW
+#[derive(Subcommand)]
+enum ConfigCommand {
+    /// Write the defaults to the config file.
+    Init {
+        #[arg(long)]
+        force: bool,
+    },
+    /// Print the config in effect.
+    Show,
+}
+
+/// NEW
+/// Overrides of the config file, for one command.
+#[derive(Args)]
+struct EngineArgs {
+    /// A model from `pie model list`, a Hugging Face id, or a directory.
     #[arg(long)]
-    serve: Option<String>,
-    /// Where installed programs are kept, with `--serve`. Defaults to
-    /// `~/.pie-tutorial/programs`.
+    model: Option<String>,
     #[arg(long)]
-    programs: Option<std::path::PathBuf>,
-    /// Hugging Face model id or local directory.
-    #[arg(long, default_value = "Qwen/Qwen3-0.6B")]
-    model: String,
-    /// How many copies of the inferlet to run at once.
-    #[arg(short, long, default_value_t = 1)]
-    instances: usize,
-    #[arg(long, default_value_t = 1024)]
-    kv_pages: u32, // configured based on your PC
-    #[arg(long, default_value_t = 16)]
-    page_size: usize,
+    kv_pages: Option<u32>,
+    #[arg(long)]
+    page_size: Option<usize>,
     /// Most tokens in one model step. Longer prefills are split.
-    #[arg(long, default_value_t = 256)]
-    step_tokens: usize,
+    #[arg(long)]
+    step_tokens: Option<usize>,
+    #[arg(long)]
+    cpu: bool,
     /// A directory inferlets may read, as `/data`.
     #[arg(long)]
-    allow_dir: Option<std::path::PathBuf>,
+    allow_dir: Option<PathBuf>,
     /// Let inferlets also write in `--allow-dir`.
     #[arg(long)]
     allow_write: bool,
     /// An address (host:port) inferlets may open TCP connections to.
     #[arg(long)]
     allow_connect: Vec<String>,
-    #[arg(long)]
-    cpu: bool,
-    /// Run the instances one after another instead of all at once.
-    #[arg(short, long)]
-    sequential: bool,
-    /// Arguments passed to the inferlet.
-    #[arg(last = true)]
-    args: Vec<String>,
-    // passed via `--`
+}
+
+impl EngineArgs {
+    /// The config file, with these flags on top.
+    fn config(&self) -> Result<Config> {
+        let mut c = Config::load()?;
+        c.model = self.model.clone().unwrap_or(c.model);
+        c.kv_pages = self.kv_pages.unwrap_or(c.kv_pages);
+        c.page_size = self.page_size.unwrap_or(c.page_size);
+        c.step_tokens = self.step_tokens.unwrap_or(c.step_tokens);
+        c.cpu |= self.cpu;
+        c.sandbox.dir = self.allow_dir.clone().or(c.sandbox.dir);
+        c.sandbox.writable |= self.allow_write;
+        c.sandbox.connect.extend(self.allow_connect.iter().cloned());
+        Ok(c)
+    }
+}
+
+/// Start a worker as `config` says.
+fn start(config: &Config) -> Result<Arc<Host>> {
+    let connect = config
+        .sandbox
+        .connect
+        .iter()
+        .map(|a| std::net::ToSocketAddrs::to_socket_addrs(a).with_context(|| format!("bad address {a}")))
+        .collect::<Result<Vec<_>>>()?;
+    worker::start(&worker::Config {
+        model: catalog::resolve(&config.model)?,
+        kv_pages: config.kv_pages,
+        page_size: config.page_size,
+        step_tokens: config.step_tokens,
+        cpu: config.cpu,
+        policy: runtime::inferlet::Policy {
+            dir: config.sandbox.dir.clone(),
+            writable: config.sandbox.writable,
+            connect: connect.into_iter().flatten().collect(),
+        },
+    })
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let args = Args::parse();
-    let host = worker::start(&worker::Config {
-        model: args.model.clone(),
-        kv_pages: args.kv_pages,
-        page_size: args.page_size,
-        step_tokens: args.step_tokens,
-        cpu: args.cpu,
-        policy: runtime::inferlet::Policy {
-            dir: args.allow_dir.clone(),
-            writable: args.allow_write,
-            connect: args
-                .allow_connect
-                .iter()
-                .map(|a| std::net::ToSocketAddrs::to_socket_addrs(a).with_context(|| format!("bad address {a}")))
-                .collect::<Result<Vec<_>>>()?
-                .into_iter()
-                .flatten()
-                .collect(),
-        },
-    })?;
-    if let Some(addr) = &args.serve {
-        let home = std::env::var("HOME").context("HOME is not set")?;
-        let dir = args
-            .programs
-            .clone()
-            .unwrap_or_else(|| format!("{home}/.pie-tutorial/programs").into());
-        let programs = runtime::inferlet::Programs::open(dir)?;
-        return gateway::serve(host, std::sync::Arc::new(programs), addr).await;
+    match Cli::parse().command {
+        Command::Run {
+            inferlet,
+            instances,
+            sequential,
+            engine,
+            args,
+        } => run(start(&engine.config()?)?, &inferlet, instances, sequential, args).await,
+        Command::Serve {
+            addr,
+            programs,
+            metrics,
+            engine,
+        } => {
+            let config = engine.config()?;
+            let host = start(&config)?;
+            if let Some(metrics) = metrics.or(config.metrics.clone()) {
+                let h = host.clone();
+                tokio::spawn(bootstrap::serve_metrics(metrics, move || h.metrics()));
+            }
+            let dir = match programs {
+                Some(dir) => dir,
+                None => bootstrap::home()?.join("programs"),
+            };
+            let programs = runtime::inferlet::Programs::open(dir)?;
+            gateway::serve(host, Arc::new(programs), &addr.unwrap_or(config.addr)).await
+        }
+        Command::Model(ModelCommand::Import { model }) => {
+            let entry = catalog::import(&model)?;
+            println!("imported {} ({}) as {}", entry.source, entry.model_type, entry.name);
+            Ok(())
+        }
+        Command::Model(ModelCommand::List) => {
+            for e in catalog::list()? {
+                println!("{:<20} {:<10} {}", e.name, e.model_type, e.source);
+            }
+            Ok(())
+        }
+        Command::Config(ConfigCommand::Init { force }) => {
+            println!("wrote {}", Config::init(force)?.display());
+            Ok(())
+        }
+        Command::Config(ConfigCommand::Show) => {
+            print!("{}", toml::to_string(&Config::load()?)?);
+            Ok(())
+        }
     }
-    let component = host.load(args.inferlet.as_deref().context("give an inferlet or --serve")?)?;
+}
+
+/// Run `instances` copies of an inferlet and print what each returns.
+async fn run(host: Arc<Host>, inferlet: &str, instances: usize, sequential: bool, args: Vec<String>) -> Result<()> {
+    let component = host.load(inferlet)?;
     let session = terminal();
 
     let t = Instant::now();
     let mut running = vec![];
     let mut done = vec![];
-    for _ in 0..args.instances {
-        let (host, component, inferlet_args) = (host.clone(), component.clone(), args.args.clone());
+    for _ in 0..instances {
+        let (host, component, inferlet_args) = (host.clone(), component.clone(), args.clone());
         let session = session.clone();
         let run = tokio::spawn(async move {
             let started = Instant::now();
@@ -97,7 +216,7 @@ async fn main() -> Result<()> {
             (started.elapsed(), result)
         });
         // Sequential: finish this one before starting the next.
-        if args.sequential {
+        if sequential {
             done.push(run.await?)
         } else {
             running.push(run)
@@ -112,7 +231,7 @@ async fn main() -> Result<()> {
             Err(e) => println!("[{i}] error: {e}"),
         }
     }
-    eprintln!("{} run(s) in {:.1?}", args.instances, t.elapsed());
+    eprintln!("{instances} run(s) in {:.1?}", t.elapsed());
     Ok(())
 }
 

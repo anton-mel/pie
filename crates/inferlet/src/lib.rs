@@ -38,7 +38,6 @@ pub struct Context {
     /// Where its forwards are submitted. Forks share it: a fork reads what
     /// its parent wrote, so their work must stay in order.
     pipeline: Rc<Pipeline>,
-    /// NEW
     /// A system prompt not yet written: it goes in with the first user
     /// message, since some models fold it into that message.
     system: Option<String>,
@@ -234,13 +233,11 @@ pub struct Reply {
 }
 
 impl Context {
-    /// UPDATED
     /// Held until the first user message, or the reply.
     pub fn system(&mut self, message: &str) {
         self.system = Some(message.to_string());
     }
 
-    /// UPDATED
     /// Writes the conversation's prefix before the first message, and a
     /// held system prompt together with this message.
     pub fn user(&mut self, message: &str) {
@@ -252,7 +249,6 @@ impl Context {
         self.fill_tokens(&turn);
     }
 
-    /// NEW
     /// The conversation's prefix, if nothing is written yet.
     fn start(&mut self) {
         if self.tokens.is_empty() && self.pending.is_empty() {

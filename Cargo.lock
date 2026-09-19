@@ -223,6 +223,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "bootstrap"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "tokio",
+ "toml 1.1.6+spec-1.1.0",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2653,10 +2663,15 @@ name = "pie"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bootstrap",
+ "chat-template",
  "clap",
  "gateway",
+ "models",
  "runtime",
+ "serde",
  "tokio",
+ "toml 1.1.6+spec-1.1.0",
  "worker",
 ]
 

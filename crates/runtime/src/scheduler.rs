@@ -58,7 +58,14 @@ impl Job {
 
 /// Runs its steps on an `Engine`.
 /// Orders jobs by pipeline instead of by the pages they share.
-pub fn run(mut model: Box<dyn Engine>, mut rx: mpsc::UnboundedReceiver<Vec<Request>>, step_tokens: usize) {
+/// UPDATED
+/// Counts steps, tokens and forwards in `metrics`.
+pub fn run(
+    mut model: Box<dyn Engine>,
+    mut rx: mpsc::UnboundedReceiver<Vec<Request>>,
+    step_tokens: usize,
+    metrics: std::sync::Arc<crate::telemetry::Metrics>,
+) {
     let ps = model.page_size();
     let mut jobs: Vec<Job> = vec![];
     let mut next_id = 0;
@@ -124,6 +131,9 @@ pub fn run(mut model: Box<dyn Engine>, mut rx: mpsc::UnboundedReceiver<Vec<Reque
         picked.sort_by_key(|&(i, _)| jobs[i].id);
 
         let seqs: Vec<Seq> = picked.iter().map(|&(i, n)| jobs[i].chunk(n)).collect();
+        use crate::telemetry::Metrics;
+        Metrics::add(&metrics.steps, 1);
+        Metrics::add(&metrics.tokens, seqs.iter().map(|s| s.tokens.len() as u64).sum());
         match model.forward(&seqs) {
             Ok(logits) => {
                 let mut rows = logits.into_iter();
@@ -150,6 +160,7 @@ pub fn run(mut model: Box<dyn Engine>, mut rx: mpsc::UnboundedReceiver<Vec<Reque
         // Answer finished jobs. Dropping them releases the pages they held.
         let (finished, left): (Vec<Job>, Vec<Job>) = jobs.drain(..).partition(|j| j.left() == 0);
         jobs = left;
+        crate::telemetry::Metrics::add(&metrics.forwards, finished.len() as u64);
         for job in finished {
             let result = match job.error {
                 Some(e) => Err(e),

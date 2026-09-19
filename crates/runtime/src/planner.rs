@@ -17,6 +17,9 @@ pub struct Planner {
     pub freed: Arc<Notify>,
     /// Wakes evicted inferlets when another one finishes.
     exited: Notify,
+    /// NEW
+    /// Where evictions are counted.
+    metrics: Arc<crate::telemetry::Metrics>,
 }
 
 struct Inner {
@@ -33,7 +36,9 @@ struct Member {
 }
 
 impl Planner {
-    pub fn new() -> Self {
+    /// UPDATED
+    /// Takes the counters to count evictions in.
+    pub fn new(metrics: Arc<crate::telemetry::Metrics>) -> Self {
         let inner = Inner {
             next: 0,
             live: BTreeMap::new(),
@@ -43,6 +48,7 @@ impl Planner {
             inner: Mutex::new(inner),
             freed: Arc::new(Notify::new()),
             exited: Notify::new(),
+            metrics,
         }
     }
 
@@ -99,6 +105,7 @@ impl Planner {
         }
         let (_, victim) = inner.live.pop_last().unwrap();
         inner.dying += 1;
+        crate::telemetry::Metrics::add(&self.metrics.evictions, 1);
         victim.kill.notify_one();
         Ok(())
     }
