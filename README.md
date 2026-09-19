@@ -86,3 +86,6 @@ feature, and explains in its README.
 23. **Config, model catalog and metrics** ([`feat/config-catalog`](../../tree/feat/config-catalog)):
     `pie` gets subcommands, a config file, a catalog of imported models
     checked before their weights are fetched, and a `/metrics` endpoint.
+24. **Our own GPU kernel** ([`feat/metal-kernel`](../../tree/feat/metal-kernel)):
+    decoding attention runs in a Metal kernel of our own that reads KV
+    pages where they are. Up to 35% faster on long contexts.
