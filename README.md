@@ -75,3 +75,6 @@ feature, and explains in its README.
 20. 🟨 **Prefix trie** ([`feat/prefix-trie`](../../tree/feat/prefix-trie)):
     every full page is recorded by a chain hash of its prefix, so prompts
     that start the same share their KV, found by their tokens with no key.
+21. **Pipelines** ([`feat/pipelines`](../../tree/feat/pipelines)): every
+    forward is submitted on a pipeline the inferlet chooses; work on one
+    pipeline runs in order, separate pipelines are independent.
