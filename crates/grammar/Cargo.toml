@@ -1,0 +1,9 @@
+[package]
+name = "grammar"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1"
+regex-automata = "0.4"
+serde_json = { version = "1", features = ["preserve_order"] }

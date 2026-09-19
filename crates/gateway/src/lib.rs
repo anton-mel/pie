@@ -21,7 +21,6 @@ use tokio_tungstenite::tungstenite::Message;
 type Tx = SplitSink<WebSocketStream<TcpStream>, Message>;
 type Rx = SplitStream<WebSocketStream<TcpStream>>;
 
-/// UPDATED
 /// Takes where process ids start (`route` gives each worker its own range).
 pub async fn serve(host: Arc<Host>, programs: Arc<Programs>, addr: &str, first_id: u64) -> Result<()> {
     let processes = Arc::new(Processes::new(host.clone(), first_id));

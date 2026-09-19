@@ -1,0 +1,4 @@
+[package]
+name = "json-extract"
+version = "0.1.0"
+description = "Pull fields out of text as JSON that always fits a schema"

@@ -1,0 +1,19 @@
+/// Output that must follow a grammar. A matcher says which tokens may come
+/// next, and is told which one did.
+interface grammar {
+    resource matcher {
+        /// Output must match the regular expression `pattern`, in full.
+        from-regex: static func(pattern: string) -> result<matcher, string>;
+        /// Output must be compact JSON valid against a JSON schema: objects
+        /// (every property, in order), arrays, strings, numbers, booleans,
+        /// null and enums.
+        from-json-schema: static func(schema: string) -> result<matcher, string>;
+        /// The tokens that may come next; end-of-sequence tokens are among
+        /// them once the output is complete.
+        allowed: func() -> list<u32>;
+        /// The next token was `token`.
+        accept: func(token: u32) -> result<_, string>;
+        /// Whether the output so far is complete.
+        complete: func() -> bool;
+    }
+}

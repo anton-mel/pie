@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 anyhow = "1"
 chat-template = { path = "../chat-template" }
+grammar = { path = "../grammar" }
 engine = { path = "../engine" }
 tokenizers = "0.23"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }

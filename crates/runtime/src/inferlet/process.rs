@@ -52,7 +52,6 @@ struct Output {
 }
 
 impl Processes {
-    /// UPDATED
     /// Ids count up from `first`: several workers give their processes
     /// ids that do not collide, and an id says which worker holds it.
     pub fn new(host: Arc<Host>, first: u64) -> Self {

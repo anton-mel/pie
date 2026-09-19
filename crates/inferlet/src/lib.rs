@@ -21,9 +21,10 @@ mod sample;
 
 pub use exports::pie::inferlet::run::Guest;
 pub use pie::inferlet::forward::{self, Distribution, PendingForward, Sampler as DeviceSampler};
+pub use pie::inferlet::grammar::Matcher;
 pub use pie::inferlet::pipeline::Pipeline;
 pub use pie::inferlet::working_set::KvWorkingSet;
-pub use pie::inferlet::{chat, model, session, tokenizer};
+pub use pie::inferlet::{chat, grammar, model, session, tokenizer};
 pub use sample::Sampler;
 use std::rc::Rc;
 
@@ -153,6 +154,34 @@ impl Context {
     pub fn submit(&mut self, top_k: u32) -> Result<Pending, String> {
         let last = self.pending.len().saturating_sub(1) as u32;
         Ok(Pending(self.submit_rows(&[last], None, top_k)?))
+    }
+
+    /// NEW
+    /// Generate text that follows `matcher`'s grammar: at every step only
+    /// the tokens it allows are considered, and it is told which one was
+    /// picked. Stops at end-of-sequence, or when only that is left.
+    pub fn generate_matching(
+        &mut self,
+        matcher: &Matcher,
+        max_tokens: usize,
+        mut sample: impl FnMut(&Distribution) -> u32,
+    ) -> Result<String, String> {
+        let eos = tokenizer::eos_tokens();
+        let mut out = vec![];
+        while out.len() < max_tokens {
+            let allowed = matcher.allowed();
+            if allowed.iter().all(|t| eos.contains(t)) {
+                break;
+            }
+            let next = sample(&self.forward_allowed(&allowed, allowed.len().min(64) as u32)?);
+            if eos.contains(&next) {
+                break;
+            }
+            matcher.accept(next)?;
+            out.push(next);
+            self.fill_tokens(&[next]);
+        }
+        Ok(tokenizer::detokenize(&out))
     }
 
     /// Like `forward`, but the next token can only be one of `allowed`.

@@ -28,6 +28,7 @@ wasmtime::component::bindgen!({
         "pie:inferlet/working-set.kv-working-set": KvWorkingSet,
         "pie:inferlet/forward.pending-forward": PendingForward,
         "pie:inferlet/pipeline.pipeline": Pipeline,
+        "pie:inferlet/grammar.matcher": ::grammar::Matcher,
     },
 });
 

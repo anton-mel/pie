@@ -60,6 +60,9 @@ pub struct Engine {
     /// Every full page computed so far, by the chain hash of its prefix.
     prefixes: Mutex<crate::store::Prefixes>,
     pub metrics: Arc<crate::telemetry::Metrics>,
+    /// NEW
+    /// Every token's bytes, for grammars; built the first time one is used.
+    vocab: std::sync::OnceLock<Arc<grammar::Vocab>>,
 }
 
 /// Pages published under a key, and when each key was last used. The index
@@ -126,7 +129,30 @@ impl Engine {
             index: Mutex::default(),
             prefixes: Mutex::default(),
             metrics,
+            vocab: std::sync::OnceLock::new(),
         }
+    }
+
+    /// NEW
+    /// The vocabulary as grammars see it: each token's bytes.
+    pub fn vocab(&self) -> Arc<grammar::Vocab> {
+        self.vocab
+            .get_or_init(|| {
+                let size = self.tokenizer.get_vocab_size(true) as u32;
+                let special: std::collections::HashSet<u32> =
+                    self.tokenizer.get_added_tokens_decoder().keys().copied().collect();
+                let strings = (0..size)
+                    .map(|t| {
+                        if special.contains(&t) {
+                            None
+                        } else {
+                            self.tokenizer.id_to_token(t)
+                        }
+                    })
+                    .collect();
+                Arc::new(grammar::Vocab::from_byte_level(strings, self.eos.clone()))
+            })
+            .clone()
     }
 
     /// Everything counted so far, and the pool as it is now.

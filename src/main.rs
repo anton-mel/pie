@@ -53,13 +53,11 @@ enum Command {
         #[command(flatten)]
         engine: EngineArgs,
     },
-    /// NEW
     /// Route clients to workers (`pie worker`) that register here.
     Gateway {
         #[arg(long, default_value = "127.0.0.1:9123")]
         addr: String,
     },
-    /// NEW
     /// Load the model and serve programs, registered with a gateway.
     Worker {
         /// The gateway to register with.

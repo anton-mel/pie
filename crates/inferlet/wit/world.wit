@@ -10,6 +10,7 @@ world inferlet {
     import pipeline;
     import forward;
     import chat;
+    import grammar;
     import session;
     export run;
 }

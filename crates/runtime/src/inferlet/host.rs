@@ -2,6 +2,7 @@
 
 mod chat;
 mod forward;
+mod grammar;
 mod kv_working_set;
 mod model;
 mod pipeline;
