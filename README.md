@@ -64,3 +64,6 @@ feature, and explains in its README.
 17. **Protocol and programs** ([`feat/protocol`](../../tree/feat/protocol)):
     clients talk to a gateway over a shared, versioned protocol on
     websockets, install programs once, and start them by name.
+18. **Processes** ([`feat/processes`](../../tree/feat/processes)): a
+    launched program is a process with an id that outlives its client.
+    Clients attach to it, detach, list processes and kill them.
