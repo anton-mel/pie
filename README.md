@@ -7,7 +7,7 @@ the design decisions behind Pie in a logical order that is easy to follow, and
 document the codebase along the way.
 
 > [!NOTE]
-> Read the files in the order listed under **What is New?** below.
+> Read the files in the order listed under **Read Order** below.
 
 Most LLM servers hard-code the generation loop (tokenize, forward, sample,
 repeat) in the engine. Pie moves it out: the loop runs in small user programs,
@@ -39,7 +39,7 @@ exposes only low-level primitives: KV pages, the tokenizer, and `forward`.
  └────────────────────────────────────────────────────┘
 ```
 
-## What is New?
+## Read Order
 
 Start at `wit/pie.wit`, the whole contract between an inferlet and the runtime.
 Then read `examples/text-completion`, a greedy inferlet in about 10 lines that
