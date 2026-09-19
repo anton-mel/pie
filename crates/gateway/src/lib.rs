@@ -6,6 +6,8 @@
 //! All programs run in the one runtime, so requests from different clients
 //! are batched together like local ones.
 
+pub mod route;
+
 use anyhow::{Result, bail};
 use client_api::{ClientMessage, ProcessInfo, ServerMessage, VERSION};
 use futures_util::stream::{SplitSink, SplitStream};
@@ -19,8 +21,10 @@ use tokio_tungstenite::tungstenite::Message;
 type Tx = SplitSink<WebSocketStream<TcpStream>, Message>;
 type Rx = SplitStream<WebSocketStream<TcpStream>>;
 
-pub async fn serve(host: Arc<Host>, programs: Arc<Programs>, addr: &str) -> Result<()> {
-    let processes = Arc::new(Processes::new(host.clone()));
+/// UPDATED
+/// Takes where process ids start (`route` gives each worker its own range).
+pub async fn serve(host: Arc<Host>, programs: Arc<Programs>, addr: &str, first_id: u64) -> Result<()> {
+    let processes = Arc::new(Processes::new(host.clone(), first_id));
     let listener = TcpListener::bind(addr).await?;
     eprintln!("serving on ws://{addr}");
     loop {
@@ -90,6 +94,9 @@ async fn handle(host: Arc<Host>, programs: Arc<Programs>, processes: Arc<Process
             },
             ClientMessage::Message { .. } | ClientMessage::Close => ServerMessage::Error {
                 message: "not attached to a process".into(),
+            },
+            ClientMessage::Register { .. } => ServerMessage::Error {
+                message: "workers register with a gateway (`pie gateway`), not with a worker".into(),
             },
         };
         send(&mut tx, reply).await?;

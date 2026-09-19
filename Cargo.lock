@@ -1343,6 +1343,7 @@ dependencies = [
  "client-api",
  "futures-util",
  "runtime",
+ "serde",
  "serde_json",
  "tokio",
  "tokio-tungstenite",

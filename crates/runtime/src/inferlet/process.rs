@@ -52,10 +52,13 @@ struct Output {
 }
 
 impl Processes {
-    pub fn new(host: Arc<Host>) -> Self {
+    /// UPDATED
+    /// Ids count up from `first`: several workers give their processes
+    /// ids that do not collide, and an id says which worker holds it.
+    pub fn new(host: Arc<Host>, first: u64) -> Self {
         Self {
             host,
-            next: AtomicU64::new(1),
+            next: AtomicU64::new(first),
             table: Mutex::default(),
         }
     }

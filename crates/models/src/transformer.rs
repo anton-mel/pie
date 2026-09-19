@@ -364,7 +364,6 @@ fn attend(q: &Tensor, kc: &Tensor, vc: &Tensor, p: &Prefill, nkv: usize) -> Resu
 }
 
 /// The model as an engine: the runtime reaches it only through this.
-/// UPDATED
 /// Samples on the device for sequences that ask for it: only a token and its
 /// probability leave the GPU, not a row of logits.
 impl engine::Engine for Model {
@@ -392,7 +391,6 @@ impl engine::Engine for Model {
     }
 }
 
-/// NEW
 /// Pick one token per row of `logits`, on whatever device they are on. With
 /// the Gumbel-max trick, the argmax of `logits / T + g`, where `g` is
 /// Gumbel noise, is an exact sample from softmax(logits / T): a few

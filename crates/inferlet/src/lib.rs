@@ -172,7 +172,6 @@ impl Context {
         self.submit_with(outputs, allowed, None, top_k)
     }
 
-    /// NEW
     /// Like `submit`, but the next token is picked on the device, next to
     /// the logits: the distribution that comes back is just that token and
     /// its probability.
@@ -181,7 +180,6 @@ impl Context {
         Ok(Pending(self.submit_with(&[last], None, Some(sampler), 1)?))
     }
 
-    /// UPDATED
     /// What every submit comes down to, now with an optional device sampler.
     fn submit_with(
         &mut self,

@@ -5,10 +5,11 @@
 
 use serde::{Deserialize, Serialize};
 
+/// UPDATED
 /// Bumped whenever a message changes shape.
-pub const VERSION: u32 = 2;
+pub const VERSION: u32 = 3;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ClientMessage {
     /// Install a program so it can be launched by name. Its wasm follows as
@@ -28,6 +29,10 @@ pub enum ClientMessage {
     Message { text: String },
     /// No more messages: the process's next `session.receive` returns none.
     Close,
+    /// NEW
+    /// From a worker to the gateway: it serves at `addr`. The connection
+    /// stays open for as long as the worker is up.
+    Register { addr: String },
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -61,6 +66,11 @@ pub enum ServerMessage {
     },
     Error {
         message: String,
+    },
+    /// NEW
+    /// A worker's id: its processes' ids start at `worker << 32`.
+    Registered {
+        worker: u32,
     },
 }
 

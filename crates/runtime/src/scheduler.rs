@@ -57,7 +57,6 @@ impl Job {
     }
 }
 
-/// UPDATED
 /// Takes rows the engine already sampled as they are.
 /// Runs its steps on an `Engine`.
 /// Orders jobs by pipeline instead of by the pages they share.

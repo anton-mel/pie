@@ -6,7 +6,6 @@ use ::engine::Seq;
 use wasmtime::component::Resource;
 
 impl forward::Host for State {
-    /// UPDATED
     /// Passes a sampler on to the engine.
     async fn forward(
         &mut self,

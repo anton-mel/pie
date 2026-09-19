@@ -7,14 +7,12 @@ pub trait Engine: Send {
     /// Tokens per KV page.
     fn page_size(&self) -> usize;
 
-    /// UPDATED
     /// Run one step over `seqs`. Returns one row for every entry of every
     /// sequence's `outputs`, in order: its logits, or the token sampled
     /// from them if the sequence asked for sampling.
     fn forward(&mut self, seqs: &[Seq]) -> anyhow::Result<Vec<Row>>;
 }
 
-/// NEW
 /// One output of a step.
 pub enum Row {
     /// Every token's score.
@@ -23,7 +21,6 @@ pub enum Row {
     Sampled { token: u32, prob: f32 },
 }
 
-/// NEW
 /// How to pick a token on the device: from softmax(logits / temperature),
 /// keeping only tokens at least `min_p` times as likely as the most likely.
 /// Temperature 0 picks the most likely token.
@@ -44,7 +41,6 @@ pub struct Seq {
     pub outputs: Vec<u32>,
     pub pages: Vec<u32>,
     pub kv_len: usize,
-    /// NEW
     /// Sample its outputs on the device instead of returning logits.
     pub sample: Option<Sampling>,
 }

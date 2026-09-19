@@ -7,7 +7,6 @@ interface forward {
         probs: list<f32>,
     }
 
-    /// NEW
     /// Sampling done on the device, next to the logits: only the chosen
     /// token and its probability come back. Temperature 0 is greedy;
     /// `min-p` drops tokens less likely than that share of the most likely.

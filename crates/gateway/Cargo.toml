@@ -7,6 +7,7 @@ edition = "2024"
 anyhow = "1"
 client-api = { path = "../client-api" }
 futures-util = "0.3"
+serde = "1"
 runtime = { path = "../runtime" }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "net"] }

@@ -53,6 +53,26 @@ enum Command {
         #[command(flatten)]
         engine: EngineArgs,
     },
+    /// NEW
+    /// Route clients to workers (`pie worker`) that register here.
+    Gateway {
+        #[arg(long, default_value = "127.0.0.1:9123")]
+        addr: String,
+    },
+    /// NEW
+    /// Load the model and serve programs, registered with a gateway.
+    Worker {
+        /// The gateway to register with.
+        #[arg(long)]
+        gateway: String,
+        /// Where this worker serves; the gateway connects here.
+        #[arg(long)]
+        addr: String,
+        #[arg(long)]
+        programs: Option<PathBuf>,
+        #[command(flatten)]
+        engine: EngineArgs,
+    },
     /// The local model catalog.
     #[command(subcommand)]
     Model(ModelCommand),
@@ -171,7 +191,24 @@ async fn main() -> Result<()> {
                 None => bootstrap::home()?.join("programs"),
             };
             let programs = runtime::inferlet::Programs::open(dir)?;
-            gateway::serve(host, Arc::new(programs), &addr.unwrap_or(config.addr)).await
+            gateway::serve(host, Arc::new(programs), &addr.unwrap_or(config.addr), 1).await
+        }
+        Command::Gateway { addr } => gateway::route::route(&addr).await,
+        Command::Worker {
+            gateway,
+            addr,
+            programs,
+            engine,
+        } => {
+            let host = start(&engine.config()?)?;
+            let dir = match programs {
+                Some(dir) => dir,
+                None => bootstrap::home()?.join("programs"),
+            };
+            let programs = runtime::inferlet::Programs::open(dir)?;
+            let id = gateway::route::register(&gateway, &addr).await?;
+            eprintln!("registered with {gateway} as worker {id}");
+            gateway::serve(host, Arc::new(programs), &addr, (id as u64) << 32).await
         }
         Command::Model(ModelCommand::Import { model }) => {
             let entry = catalog::import(&model)?;
