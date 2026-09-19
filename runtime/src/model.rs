@@ -22,6 +22,9 @@ pub struct Config {
 }
 
 pub struct Seq {
+    /// Pages to copy `(from, to)` before anything is written: copy-on-write
+    /// for pages this sequence shares with a fork.
+    pub copies: Vec<(u32, u32)>,
     pub tokens: Vec<u32>,
     pub positions: Vec<u32>,
     pub pages: Vec<u32>,
@@ -147,6 +150,15 @@ impl Model {
             slots.push(Tensor::new((0..s.kv_len).map(slot).collect::<Vec<_>>(), &self.device)?);
             offsets.push(off);
             off += s.tokens.len();
+        }
+
+        for (from, to) in seqs.iter().flat_map(|s| &s.copies) {
+            for l in &mut self.layers {
+                for cache in [&mut l.k_cache, &mut l.v_cache] {
+                    let page = cache.narrow(0, *from as usize * ps, ps)?.copy()?;
+                    cache.slice_set(&page, 0, *to as usize * ps)?;
+                }
+            }
         }
 
         let mut x = self.embed.forward(&Tensor::new(tokens, &self.device)?)?;

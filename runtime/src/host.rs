@@ -22,7 +22,8 @@ wasmtime::component::bindgen!({
 /// The host side of a `kv-working-set`: logical page `i` is physical page
 /// `pages[i]`. It lives in the instance's resource table, so an inferlet can
 /// only name its own, and its pages go back to the pool when it is dropped,
-/// either by the guest or with the whole instance on exit.
+/// either by the guest or with the whole instance on exit. After a fork, two
+/// working sets point at the same physical pages until one writes.
 pub struct KvWorkingSet {
     engine: Arc<Engine>,
     pages: Vec<u32>,
@@ -68,6 +69,16 @@ impl model::HostKvWorkingSet for State {
         Ok(())
     }
 
+    async fn fork(&mut self, ws: Resource<KvWorkingSet>) -> Resource<KvWorkingSet> {
+        let pages = self.table.get(&ws).map_or(vec![], |ws| ws.pages.clone());
+        self.engine.share(&pages);
+        let child = KvWorkingSet {
+            engine: self.engine.clone(),
+            pages,
+        };
+        self.table.push(child).expect("resource table full")
+    }
+
     async fn drop(&mut self, ws: Resource<KvWorkingSet>) -> wasmtime::Result<()> {
         self.table.delete(ws)?;
         Ok(())
@@ -103,9 +114,10 @@ impl model::Host for State {
         positions: Vec<u32>,
         top_k: u32,
     ) -> Result<Distribution, String> {
-        let ws = self.table.get(&kv).map_err(|e| e.to_string())?;
+        let ws = self.table.get_mut(&kv).map_err(|e| e.to_string())?;
         // Translate logical pages to physical ones for the pages in use.
-        let need = kv_len.div_ceil(self.engine.page_size) as usize;
+        let ps = self.engine.page_size;
+        let need = kv_len.div_ceil(ps) as usize;
         if need > ws.pages.len() {
             return Err(format!(
                 "kv-len {kv_len} needs {need} pages, working set has {}",
@@ -115,7 +127,21 @@ impl model::Host for State {
         if tokens.is_empty() || tokens.len() != positions.len() || tokens.len() > kv_len as usize {
             return Err("tokens/positions do not fit kv-len".into());
         }
+        // Copy-on-write: a page this call writes into and a fork still holds
+        // is copied to a fresh page first, and this working set moves to it.
+        let first = (kv_len - tokens.len() as u32) / ps;
+        let mut copies = vec![];
+        for i in first as usize..need {
+            let page = ws.pages[i];
+            if self.engine.is_shared(page) {
+                let fresh = self.engine.alloc(1).ok_or("out of KV pages")?[0];
+                copies.push((page, fresh));
+                self.engine.free([page]);
+                ws.pages[i] = fresh;
+            }
+        }
         let seq = Seq {
+            copies,
             tokens,
             positions,
             pages: ws.pages[..need].to_vec(),

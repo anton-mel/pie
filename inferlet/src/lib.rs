@@ -45,6 +45,17 @@ impl Context {
         }
     }
 
+    /// A copy of this context that shares its KV cache. Both can go on
+    /// independently; a shared page is copied only when one of them writes.
+    pub fn fork(&self) -> Self {
+        Self {
+            tokens: self.tokens.clone(),
+            pending: self.pending.clone(),
+            kv: self.kv.fork(),
+            page_size: self.page_size,
+        }
+    }
+
     pub fn fill(&mut self, text: &str) {
         self.pending.extend(model::tokenize(text));
     }

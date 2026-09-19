@@ -22,8 +22,15 @@ pub struct Engine {
     pub tokenizer: Tokenizer,
     pub eos: Vec<u32>,
     pub page_size: u32,
-    free: Mutex<Vec<u32>>,
+    pool: Mutex<Pool>,
     queue: mpsc::UnboundedSender<Request>,
+}
+
+/// Physical KV pages. A page can be held by several working sets after a
+/// fork; `refs` counts them and the page is free again at zero.
+struct Pool {
+    free: Vec<u32>,
+    refs: Vec<u32>,
 }
 
 impl Engine {
@@ -35,19 +42,41 @@ impl Engine {
             tokenizer,
             eos,
             page_size,
-            free: Mutex::new((0..pages).rev().collect()),
+            pool: Mutex::new(Pool {
+                free: (0..pages).rev().collect(),
+                refs: vec![0; pages as usize],
+            }),
             queue,
         }
     }
 
     pub fn alloc(&self, n: u32) -> Option<Vec<u32>> {
-        let mut free = self.free.lock().unwrap();
-        let at = free.len().checked_sub(n as usize)?;
-        Some(free.split_off(at))
+        let mut pool = self.pool.lock().unwrap();
+        let at = pool.free.len().checked_sub(n as usize)?;
+        let pages = pool.free.split_off(at);
+        pages.iter().for_each(|&p| pool.refs[p as usize] = 1);
+        Some(pages)
     }
 
+    /// One more holder for each page.
+    pub fn share(&self, pages: &[u32]) {
+        let mut pool = self.pool.lock().unwrap();
+        pages.iter().for_each(|&p| pool.refs[p as usize] += 1);
+    }
+
+    pub fn is_shared(&self, page: u32) -> bool {
+        self.pool.lock().unwrap().refs[page as usize] > 1
+    }
+
+    /// One less holder for each page; pages nobody holds go back to the pool.
     pub fn free(&self, pages: impl IntoIterator<Item = u32>) {
-        self.free.lock().unwrap().extend(pages);
+        let mut pool = self.pool.lock().unwrap();
+        for p in pages {
+            pool.refs[p as usize] -= 1;
+            if pool.refs[p as usize] == 0 {
+                pool.free.push(p);
+            }
+        }
     }
 
     pub async fn forward(&self, seq: Seq, top_k: usize) -> Result<Distribution, String> {

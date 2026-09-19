@@ -16,6 +16,9 @@ interface model {
         page-len: func() -> u32;
         /// taken from the shared pool.
         reserve: func(n: u32) -> result<_, string>;
+        /// A new working set sharing all of this one's pages. Nothing is
+        /// copied: a shared page is copied only when one side writes to it.
+        fork: func() -> kv-working-set;
     }
 
     tokenize: func(text: string) -> list<u32>;
