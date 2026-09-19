@@ -7,6 +7,7 @@ feature, and explains in its README.
 
 ## Chapters
 
+
 🟨 Pie internals · 🟩 Model and GPU · 🟥 Server and client · ⬜ Code layout
 
 1. 🟨 **Inferlets** ([`feat/inferlet`](../../tree/feat/inferlet)): the core. A
@@ -69,12 +70,12 @@ feature, and explains in its README.
 18. 🟥 **Processes** ([`feat/processes`](../../tree/feat/processes)): a
     launched program is a process with an id that outlives its client.
     Clients attach to it, detach, list processes and kill them.
-19. 🟨 **Sandbox** ([`feat/sandbox`](../../tree/feat/sandbox)): a policy
+19. 🟥 **Sandbox** ([`feat/sandbox`](../../tree/feat/sandbox)): a policy
     decides what inferlets may reach besides the model: one directory, and
     TCP to listed addresses. By default, nothing.
 20. 🟨 **Prefix trie** ([`feat/prefix-trie`](../../tree/feat/prefix-trie)):
     every full page is recorded by a chain hash of its prefix, so prompts
     that start the same share their KV, found by their tokens with no key.
-21. **Pipelines** ([`feat/pipelines`](../../tree/feat/pipelines)): every
+21. 🟩 **Pipelines** ([`feat/pipelines`](../../tree/feat/pipelines)): every
     forward is submitted on a pipeline the inferlet chooses; work on one
     pipeline runs in order, separate pipelines are independent.
