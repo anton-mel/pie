@@ -7,7 +7,12 @@ use std::path::PathBuf;
 use tokenizers::Tokenizer;
 
 pub struct Files {
-    pub config: models::Config,
+    /// UPDATED
+    /// The model as the transformer needs to know it.
+    pub description: models::Description,
+    /// NEW
+    /// The chat template text the model ships with, if any.
+    pub chat_template: Option<String>,
     /// The model family, as its config names it (`model_type`).
     pub model_type: String,
     pub weights: Vec<PathBuf>,
@@ -68,7 +73,10 @@ impl Files {
         };
         Ok(Self {
             model_type: config["model_type"].as_str().unwrap_or_default().to_string(),
-            config: serde_json::from_value(config)?,
+            description: models::describe(&config)?,
+            chat_template: json("tokenizer_config.json")
+                .ok()
+                .and_then(|t| t["chat_template"].as_str().map(String::from)),
             weights,
             tokenizer,
             eos,

@@ -1,12 +1,10 @@
-//! The models the engine can run: for now one, the Qwen2/Qwen3 family.
+//! The models the engine can run: the families `description` describes,
+//! all run by the one transformer in `transformer`.
 
+mod description;
 #[cfg(feature = "metal")]
 mod paged_attention;
-mod qwen;
+mod transformer;
 
-pub use qwen::{Config, Model};
-
-/// Whether a model family, as its config names it (`model_type`), can run.
-pub fn supports(model_type: &str) -> bool {
-    matches!(model_type, "qwen2" | "qwen3")
-}
+pub use description::{Description, describe, supports};
+pub use transformer::Model;

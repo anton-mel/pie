@@ -1,54 +1,58 @@
-# Chapter #24: Our Own GPU Kernel
+# Chapter #25: Model Descriptions
 
-Until chapter 23, candle did all the GPU work. For attention while decoding
-(chapter 14) that meant gathering every sequence's cached keys and values
-into a new tensor, every step, in every layer, and only then multiplying.
-The longer the context, the more was copied.
+Until chapter 24, the model was a hand-written Qwen: it guessed the family's
+quirks from which tensors a checkpoint happened to have, and any other
+family was refused.
 
-In chapter 24 decoding attention on Metal runs in a kernel of our own
-(`crates/models/src/paged_attention.rs`), as the reference has for CUDA,
-Metal, Vulkan and WebGPU. It is written in Metal Shading Language, compiled
-when first used, and plugged into candle as a custom op. One threadgroup
-takes one sequence and one query head. It walks the sequence's page table
-and reads each key and value straight from its slot in the cache, so
-nothing is copied. Scores are taken in blocks of 128 positions with a
-running maximum and sum (online softmax, as in flash decoding), so its
-memory does not grow with the context.
+In chapter 25 each family is described once (`crates/models/src/description.rs`)
+and one transformer follows the description (`transformer.rs`, formerly
+`qwen.rs`), as the reference describes every family once and runs them all
+with one engine. A `Description` holds the sizes, and the switches in which
+families differ: biases on the query, key and value projections (Qwen2), a
+norm on each query and key head (Qwen3), tied embeddings, and the rotary
+base with Llama 3's frequency scaling. `describe` reads it from a model's
+config; there are three families: `qwen2`, `qwen3` and `llama`.
 
-Its unit test runs it in f32 on random data, with scattered pages, three
-sequence lengths and grouped-query heads, and compares it with plain
-attention computed on the CPU: they agree to within 1e-4. Greedy output is
-the same as before. Median of three runs, gather against kernel:
+The chat format is now read from the model itself. A family does not fix
+it: SmolLM2 is a `llama` model that speaks ChatML. The worker looks at the
+chat template a model ships with (`chat_template::detect`) and falls back to
+the family only when there is none.
 
-| | gather | kernel |
+Two Llama models run with no other change, next to Qwen:
+
+| model | family | chat format |
 |---|---|---|
-| beam search, 8 beams | 604 ms | 535 ms |
-| beam search, 16 beams | 888 ms | 753 ms |
-| 16 inferlets, 48 tokens each | 1800 ms | 1500 ms |
-| 4 inferlets, 100 tokens after ~1,500 | 10.9 s | 7.1 s |
+| `Qwen/Qwen3-0.6B` | qwen3 | ChatML |
+| `HuggingFaceTB/SmolLM2-135M-Instruct` | llama | ChatML |
+| `unsloth/Llama-3.2-1B-Instruct` | llama, rotary scaling | Llama 3 |
 
-`PIE_GATHER_ATTENTION=1` switches back to the gather, for comparison.
+```
+$ pie run --model unsloth/Llama-3.2-1B-Instruct chat.wasm -- "What is the capital of France?" "And of Germany?" "Which of the two cities is bigger?"
+    assistant: Paris.
+    assistant: Berlin.
+    assistant: Berlin is larger.
+```
 
 > [!NOTE]
-> The kernel sums in f32, the gather in bf16, so sampled outputs can take a
-> different path after a close call. The reference has kernels for every
-> operation of the model on four GPU APIs; here there is one, for Metal,
-> and candle still does the rest. Prefill keeps the old path.
+> The reference goes much further: a family's forward pass is written in a
+> DSL, compiled into a plan per GPU backend (`crates/model-ir`, `model-dsl`,
+> `model-compiler`), and checkpoints are checked against an import contract
+> (`crates/checkpoint`). Here a description is data, and the transformer is
+> still ordinary candle code.
 
 ## Read Order
 
-Read the Metal source at the top of `crates/models/src/paged_attention.rs`,
-then `PagedDecode::metal_fwd` and the test at the end. Then where
-`attend_decode` in `crates/models/src/qwen.rs` uses it.
+Read `crates/models/src/description.rs`, then `Model::load` in
+`crates/models/src/transformer.rs`. Then `Files` in
+`crates/worker/src/weights.rs`, and `detect` in `crates/chat-template`.
 
 ## Run MacOS
 
 ```bash
 rustup target add wasm32-wasip2
-cargo test --release -p models --features metal
 cargo build --release -p pie --features metal
-cargo build --release -p beam-search --target wasm32-wasip2
+cargo build --release -p chat --target wasm32-wasip2
 
-./target/release/pie run target/wasm32-wasip2/release/beam_search.wasm -- "Once upon a time" 16 32
-PIE_GATHER_ATTENTION=1 ./target/release/pie run target/wasm32-wasip2/release/beam_search.wasm -- "Once upon a time" 16 32
+./target/release/pie run --model HuggingFaceTB/SmolLM2-135M-Instruct target/wasm32-wasip2/release/chat.wasm -- "What is the capital of France?"
+./target/release/pie run --model unsloth/Llama-3.2-1B-Instruct target/wasm32-wasip2/release/chat.wasm -- "What is the capital of France?"
 ```

@@ -2299,7 +2299,7 @@ dependencies = [
  "candle-nn",
  "engine",
  "objc2-metal",
- "serde",
+ "serde_json",
 ]
 
 [[package]]

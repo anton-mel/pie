@@ -35,6 +35,23 @@ pub fn for_model(model_type: &str) -> Option<Box<dyn Template>> {
     })
 }
 
+/// NEW
+/// The template whose markers appear in a model's own chat template text
+/// (the Jinja in its `tokenizer_config.json`).
+pub fn detect(chat_template: &str) -> Option<Box<dyn Template>> {
+    Some(if chat_template.contains("<|im_start|>") {
+        Box::new(ChatMl)
+    } else if chat_template.contains("<|start_header_id|>") {
+        Box::new(Llama3)
+    } else if chat_template.contains("<start_of_turn>") {
+        Box::new(Gemma)
+    } else if chat_template.contains("<｜User｜>") {
+        Box::new(DeepSeek)
+    } else {
+        return None;
+    })
+}
+
 /// ChatML, used by Qwen: `<|im_start|>role\nmessage<|im_end|>\n`.
 pub struct ChatMl;
 
@@ -184,6 +201,14 @@ mod tests {
             render(&DeepSeek),
             "<｜begin▁of▁sentence｜>Be brief.<｜User｜>Hi<｜Assistant｜>Hello!<｜end▁of▁sentence｜><｜User｜>Bye<｜Assistant｜>"
         );
+    }
+
+    #[test]
+    fn detects_from_template_text() {
+        let text = |t: &dyn Template| render(t);
+        assert_eq!(text(&*detect("{{ '<|im_start|>' + role }}").unwrap()), render(&ChatMl));
+        assert_eq!(text(&*detect("<|start_header_id|>").unwrap()), render(&Llama3));
+        assert!(detect("{{ messages }}").is_none());
     }
 
     #[test]

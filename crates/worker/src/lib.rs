@@ -44,11 +44,17 @@ pub fn start(config: &Config) -> Result<Arc<Host>> {
 
     let t = Instant::now();
     let vb = unsafe { VarBuilder::from_mmaped_safetensors(&files.weights, dtype, &device)? };
-    let model = models::Model::load(&files.config, vb, config.kv_pages as usize, config.page_size)?;
+    let model = models::Model::load(&files.description, vb, config.kv_pages as usize, config.page_size)?;
     eprintln!("loaded {} on {:?} in {:.1?}", config.model, device, t.elapsed());
 
-    let template = chat_template::for_model(&files.model_type)
-        .with_context(|| format!("no chat template for model type {:?}", files.model_type))?;
+    // The model's own template text says which format it is; the family is
+    // only a fallback (a "llama" model can speak ChatML).
+    let template = files
+        .chat_template
+        .as_deref()
+        .and_then(chat_template::detect)
+        .or_else(|| chat_template::for_model(&files.model_type))
+        .with_context(|| format!("no chat template for {}", config.model))?;
     let engine: Box<dyn engine::Engine> = Box::new(model);
     let runtime = runtime::engine::Engine::new(
         engine,

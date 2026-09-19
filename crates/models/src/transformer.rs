@@ -1,26 +1,11 @@
-//! The model itself: a Qwen2/Qwen3 transformer that turns tokens into
-//! next-token scores (logits).
+//! The model itself: one transformer that turns tokens into next-token
+//! scores (logits), for every family `description.rs` describes.
 
+use crate::Description;
 use anyhow::{Result, ensure};
 use candle_core::{DType, Device, Tensor};
 use candle_nn::{Embedding, Linear, Module, RmsNorm, VarBuilder, rotary_emb::rope};
 use engine::Seq;
-use serde::Deserialize;
-
-#[derive(Deserialize)]
-pub struct Config {
-    hidden_size: usize,
-    intermediate_size: usize,
-    num_hidden_layers: usize,
-    num_attention_heads: usize,
-    num_key_value_heads: usize,
-    head_dim: Option<usize>,
-    rms_norm_eps: f64,
-    rope_theta: f64,
-    vocab_size: usize,
-    #[serde(default)]
-    tie_word_embeddings: bool,
-}
 
 struct Layer {
     q: Linear,
@@ -53,60 +38,47 @@ pub struct Model {
     pub device: Device,
 }
 
-fn linear(i: usize, o: usize, vb: VarBuilder) -> Result<Linear> {
-    // Qwen2 has q/k/v biases, Qwen3 does not: take them if the checkpoint does.
-    let bias = vb.contains_tensor("bias");
-    Ok(candle_nn::linear_b(i, o, bias, vb)?)
-}
-
 impl Model {
-    pub fn load(cfg: &Config, vb: VarBuilder, pages: usize, page_size: usize) -> Result<Self> {
-        let (h, hd) = (
-            cfg.hidden_size,
-            cfg.head_dim.unwrap_or(cfg.hidden_size / cfg.num_attention_heads),
-        );
-        let (nh, nkv) = (cfg.num_attention_heads, cfg.num_key_value_heads);
+    /// UPDATED
+    /// Loads any described family: what differs comes from `d`, not from
+    /// which tensors the checkpoint happens to have.
+    pub fn load(d: &Description, vb: VarBuilder, pages: usize, page_size: usize) -> Result<Self> {
+        let (h, hd, nh, nkv) = (d.hidden, d.head_dim, d.heads, d.kv_heads);
         let (dtype, device) = (vb.dtype(), vb.device().clone());
         let m = vb.pp("model");
-        let norm = |n: usize, vb: VarBuilder| candle_nn::rms_norm(n, cfg.rms_norm_eps, vb);
+        let norm = |n: usize, vb: VarBuilder| candle_nn::rms_norm(n, d.norm_eps, vb);
+        let linear = |i: usize, o: usize, vb: VarBuilder| candle_nn::linear_no_bias(i, o, vb);
+        let qkv = |i: usize, o: usize, vb: VarBuilder| candle_nn::linear_b(i, o, d.qkv_bias, vb);
         let mut layers = Vec::new();
-        for i in 0..cfg.num_hidden_layers {
+        for i in 0..d.layers {
             let l = m.pp(format!("layers.{i}"));
             let (a, mlp) = (l.pp("self_attn"), l.pp("mlp"));
             let cache = || Tensor::zeros((pages * page_size, nkv, hd), dtype, &device);
             layers.push(Layer {
-                q: linear(h, nh * hd, a.pp("q_proj"))?,
-                k: linear(h, nkv * hd, a.pp("k_proj"))?,
-                v: linear(h, nkv * hd, a.pp("v_proj"))?,
+                q: qkv(h, nh * hd, a.pp("q_proj"))?,
+                k: qkv(h, nkv * hd, a.pp("k_proj"))?,
+                v: qkv(h, nkv * hd, a.pp("v_proj"))?,
                 o: linear(nh * hd, h, a.pp("o_proj"))?,
-                q_norm: a
-                    .contains_tensor("q_norm.weight")
-                    .then(|| norm(hd, a.pp("q_norm")))
-                    .transpose()?,
-                k_norm: a
-                    .contains_tensor("k_norm.weight")
-                    .then(|| norm(hd, a.pp("k_norm")))
-                    .transpose()?,
-                gate: linear(h, cfg.intermediate_size, mlp.pp("gate_proj"))?,
-                up: linear(h, cfg.intermediate_size, mlp.pp("up_proj"))?,
-                down: linear(cfg.intermediate_size, h, mlp.pp("down_proj"))?,
+                q_norm: d.qk_norm.then(|| norm(hd, a.pp("q_norm"))).transpose()?,
+                k_norm: d.qk_norm.then(|| norm(hd, a.pp("k_norm"))).transpose()?,
+                gate: linear(h, d.intermediate, mlp.pp("gate_proj"))?,
+                up: linear(h, d.intermediate, mlp.pp("up_proj"))?,
+                down: linear(d.intermediate, h, mlp.pp("down_proj"))?,
                 ln1: norm(h, l.pp("input_layernorm"))?,
                 ln2: norm(h, l.pp("post_attention_layernorm"))?,
                 k_cache: cache()?,
                 v_cache: cache()?,
             });
         }
-        let embed = candle_nn::embedding(cfg.vocab_size, h, m.pp("embed_tokens"))?;
-        let lm_head = if cfg.tie_word_embeddings {
+        let embed = candle_nn::embedding(d.vocab, h, m.pp("embed_tokens"))?;
+        let lm_head = if d.tie_embeddings {
             Linear::new(embed.embeddings().clone(), None)
         } else {
-            candle_nn::linear_no_bias(h, cfg.vocab_size, vb.pp("lm_head"))?
+            candle_nn::linear_no_bias(h, d.vocab, vb.pp("lm_head"))?
         };
         // RoPE tables, indexed by position at runtime.
         let max_pos = 32768;
-        let inv: Vec<f32> = (0..hd / 2)
-            .map(|i| 1.0 / cfg.rope_theta.powf(2.0 * i as f64 / hd as f64) as f32)
-            .collect();
+        let inv = d.inv_freq();
         let t = Tensor::arange(0u32, max_pos as u32, &device)?.to_dtype(DType::F32)?;
         let freqs = t.unsqueeze(1)?.matmul(&Tensor::new(inv, &device)?.unsqueeze(0)?)?;
         Ok(Self {
@@ -228,7 +200,6 @@ struct Decode {
     mask: Tensor,
     b: usize,
     len: usize,
-    /// NEW
     /// The same sequences as page tables, for the kernel: every sequence's
     /// pages one after another, where each starts, and each one's length.
     pages: Vec<u32>,
@@ -342,7 +313,6 @@ impl Plan {
     }
 }
 
-/// UPDATED
 /// Uses our Metal kernel when it can.
 /// Attention of all single-token sequences at once: one gather of their
 /// cache slots, one batched matmul, one softmax.
