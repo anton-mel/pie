@@ -31,6 +31,10 @@ struct Args {
     page_size: usize,
     #[arg(long)]
     cpu: bool,
+    /// NEW
+    /// Run the instances one after another instead of all at once.
+    #[arg(short, long)]
+    sequential: bool,
     /// Arguments passed to the inferlet.
     #[arg(last = true)]
     args: Vec<String>,
@@ -98,15 +102,28 @@ async fn main() -> Result<()> {
     let component = host.load(&args.inferlet)?;
 
     let t = Instant::now();
-    let runs: Vec<_> = (0..args.instances)
-        .map(|_| {
-            let (host, component, args) = (host.clone(), component.clone(), args.args.clone());
-            tokio::spawn(async move { host.run(&component, args).await })
-        })
-        .collect();
-    for (i, run) in runs.into_iter().enumerate() {
-        match run.await?? {
-            Ok(out) => println!("[{i}] {out}"),
+    let mut running = vec![];
+    let mut done = vec![];
+    for _ in 0..args.instances {
+        let (host, component, inferlet_args) = (host.clone(), component.clone(), args.args.clone());
+        let run = tokio::spawn(async move {
+            let started = Instant::now();
+            let result = host.run(&component, inferlet_args).await;
+            (started.elapsed(), result)
+        });
+        // Sequential: finish this one before starting the next.
+        if args.sequential {
+            done.push(run.await?)
+        } else {
+            running.push(run)
+        }
+    }
+    for run in running {
+        done.push(run.await?);
+    }
+    for (i, (took, result)) in done.into_iter().enumerate() {
+        match result? {
+            Ok(out) => println!("[{i}] ({took:.1?}) {out}"),
             Err(e) => println!("[{i}] error: {e}"),
         }
     }

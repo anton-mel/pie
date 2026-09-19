@@ -83,7 +83,6 @@ impl model::HostKvWorkingSet for State {
         self.table.push(child).expect("resource table full")
     }
 
-    /// NEW
     async fn discard(&mut self, ws: Resource<KvWorkingSet>, start: u32, len: u32) -> Result<(), String> {
         let ws = self.table.get_mut(&ws).map_err(|e| e.to_string())?;
         let (start, end) = (start as usize, start as usize + len as usize);
@@ -93,6 +92,28 @@ impl model::HostKvWorkingSet for State {
         // A forward still queued on these pages holds them until it has run.
         self.engine.free(ws.pages.drain(start..end));
         Ok(())
+    }
+
+    /// NEW
+    async fn update_index(&mut self, ws: Resource<KvWorkingSet>, key: String) {
+        if let Ok(ws) = self.table.get(&ws) {
+            self.engine.publish(key, &ws.pages);
+        }
+    }
+
+    /// NEW
+    async fn from_index(&mut self, key: String) -> Option<Resource<KvWorkingSet>> {
+        let pages = self.engine.open(&key)?;
+        let ws = KvWorkingSet {
+            engine: self.engine.clone(),
+            pages,
+        };
+        Some(self.table.push(ws).expect("resource table full"))
+    }
+
+    /// NEW
+    async fn remove_index(&mut self, key: String) -> bool {
+        self.engine.unpublish(&key)
     }
 
     async fn drop(&mut self, ws: Resource<KvWorkingSet>) -> wasmtime::Result<()> {

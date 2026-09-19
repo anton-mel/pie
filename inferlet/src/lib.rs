@@ -28,7 +28,6 @@ pub struct Context {
     pending: Vec<u32>,
     kv: KvWorkingSet,
     page_size: u32,
-    /// NEW
     /// Position of the next token. Equal to `tokens.len()` until pages are
     /// discarded: then the cache gets shorter but positions keep counting.
     pos: u32,
@@ -55,6 +54,26 @@ impl Context {
         }
     }
 
+    /// NEW
+    /// A context holding `text`, computed once for all inferlets: the first
+    /// to ask runs it and publishes its KV under `text`, later ones open that
+    /// and skip the work. Add more tokens and forward as usual.
+    pub fn cached(text: &str) -> Result<Self, String> {
+        let mut ctx = Self::new();
+        let tokens = model::tokenize(text);
+        if let Some(kv) = KvWorkingSet::from_index(text) {
+            ctx.kv = kv;
+            ctx.pos = tokens.len() as u32;
+            ctx.tokens = tokens;
+            return Ok(ctx);
+        }
+        // Prefill without asking for any output: only the KV is needed.
+        ctx.pending = tokens;
+        ctx.submit_rows(&[], 1)?.wait()?;
+        ctx.kv.update_index(text);
+        Ok(ctx)
+    }
+
     pub fn fill(&mut self, text: &str) {
         self.pending.extend(model::tokenize(text));
     }
@@ -75,7 +94,6 @@ impl Context {
         self.submit_rows(&outputs, top_k)?.wait()
     }
 
-    /// UPDATED
     /// Forget the last `n` tokens, as if they had never been forwarded.
     /// Their KV stays in the pages but is past the end, and the next forward
     /// writes over it.
@@ -85,13 +103,11 @@ impl Context {
         self.pos -= n as u32;
     }
 
-    /// NEW
     /// Pages holding the cached tokens.
     pub fn page_len(&self) -> u32 {
         (self.tokens.len() as u32).div_ceil(self.page_size)
     }
 
-    /// NEW
     /// Drop `n` pages of cached tokens starting at page `start`. The model
     /// no longer sees those tokens, and their pages go back to the pool.
     pub fn discard(&mut self, start: u32, n: u32) -> Result<(), String> {
@@ -108,7 +124,6 @@ impl Context {
         Ok(Pending(self.submit_rows(&[last], top_k)?))
     }
 
-    /// UPDATED
     /// Submit the pending tokens, asking for a distribution after each
     /// token listed in `outputs` (indices into the pending tokens).
     pub fn submit_rows(&mut self, outputs: &[u32], top_k: u32) -> Result<PendingForward, String> {

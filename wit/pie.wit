@@ -11,11 +11,22 @@ interface model {
         page-len: func() -> u32;
         reserve: func(n: u32) -> result<_, string>;
         fork: func() -> kv-working-set;
-        /// NEW
         /// Drop `len` pages starting at page `start`, and free them. Later
         /// pages move down to fill the gap. The tokens in them are gone:
         /// later forwards do not attend to them.
         discard: func(start: u32, len: u32) -> result<_, string>;
+        /// NEW
+        /// Publish this working set's pages under `key`, so that any
+        /// inferlet can open them. Replaces what was published there.
+        update-index: func(key: string);
+        /// NEW
+        /// A working set sharing the pages published under `key`, as if it
+        /// were forked from them. None if nothing is there: the index is a
+        /// cache, and the runtime drops old entries when memory runs low.
+        from-index: static func(key: string) -> option<kv-working-set>;
+        /// NEW
+        /// Unpublish `key`. Working sets opened from it keep their pages.
+        remove-index: static func(key: string) -> bool;
     }
 
     tokenize: func(text: string) -> list<u32>;

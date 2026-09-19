@@ -1,41 +1,43 @@
-# Chapter #8: KV Discard
+# Chapter #9: Prefix Cache
 
-Until chapter 7, a sequence's KV cache only grew. Pages were freed when the
-whole working set was dropped, never while it was in use. So one inferlet
-could never generate more tokens than its pages could hold.
+Until chapter 8, working sets could share pages only through `fork`, inside
+one inferlet. Two inferlets that start with the same text, like the same
+long system prompt, each computed it from scratch.
 
-In chapter 8 a working set can `discard` pages it no longer needs
-(`wit/pie.wit`). Later pages move down to fill the gap, the dropped pages go
-back to the pool, and later forwards no longer attend to the tokens in them.
-The positions of the tokens that remain do not change, so `Context` now
-counts positions separately from how many tokens are cached.
+In chapter 9 a working set can be published under a key (`update-index` in
+`wit/pie.wit`), and any inferlet can open it later (`from-index`). Opening
+works like a fork: the pages are shared and copied only when written. The
+engine keeps the published pages in an index (`Index` in
+`runtime/src/engine.rs`). The index is a cache: when an allocation would
+have to wait, the engine first drops the entry used longest ago, so
+published pages never starve running inferlets (chapter 5).
 
-What to drop is the inferlet's choice. `examples/attention-sink` keeps the
-first page forever, because models lean heavily on the first tokens (the
-"attention sink"), and after it only the last few pages, a sliding window.
-It generates 512 tokens in a pool of 8 pages (128 tokens). Plain greedy
-decoding in the same pool fails with "out of KV pages". Other policies, like
-dropping the tokens that received the least attention, fit the same verb.
+`Context::cached(text)` wraps this: the first inferlet to ask runs `text`
+and publishes it, and later ones open it and skip the work. In
+`examples/prefix-cache` every request starts with the same 290-token system
+prompt. Run one after another, the first computes it (390ms) and the others
+reuse it (195ms each), with exactly the same answers.
 
 > [!NOTE]
-> Discarding a page removes its tokens from attention, but the tokens after
-> it were computed while they were still there, so they still carry some of
-> what the dropped tokens said. Nothing is recomputed.
+> Only inferlets that start after the prefix is published reuse it.
+> Inferlets that start together all miss and each compute it. That is why
+> `pie` has a new `--sequential` flag for this example.
 
 ## Read Order
 
-Read `discard` in `wit/pie.wit` and in `runtime/src/host.rs`. Then, in
-`inferlet/src/lib.rs`, `Context::discard` and the new `pos` field, which
-`submit_rows` now uses for positions. Finally `examples/attention-sink`.
+Read `update-index` and `from-index` in `wit/pie.wit` and in
+`runtime/src/host.rs`. Then `Index`, `publish`, `open` and `evict_oldest` in
+`runtime/src/engine.rs`, and where `alloc_wait` calls `evict_oldest`.
+Finally `Context::cached` in `inferlet/src/lib.rs` and
+`examples/prefix-cache`.
 
 ## Run MacOS
 
 ```bash
 rustup target add wasm32-wasip2
 cargo build --release -p pie --features metal
-cargo build --release -p text-completion -p attention-sink --target wasm32-wasip2
+cargo build --release -p prefix-cache --target wasm32-wasip2
 
-# 512 tokens in a pool of 8 pages: greedy fails, the attention sink does not
-./target/release/pie --kv-pages 8 target/wasm32-wasip2/release/text_completion.wasm -- "Once upon a time" 512
-./target/release/pie --kv-pages 8 target/wasm32-wasip2/release/attention_sink.wasm -- "Once upon a time" 512 6
+# 4 requests one after another: the first computes the system prompt, the rest reuse it
+./target/release/pie -i 4 --sequential target/wasm32-wasip2/release/prefix_cache.wasm -- "How long can I keep a DVD?" 24
 ```

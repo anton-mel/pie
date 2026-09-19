@@ -4,6 +4,7 @@
 use crate::model::{Model, Seq};
 use crate::planner::Planner;
 use anyhow::Result;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokenizers::Tokenizer;
 use tokio::sync::{Notify, mpsc, oneshot};
@@ -40,6 +41,20 @@ pub struct Engine {
     pool: Arc<Mutex<Pool>>,
     queue: mpsc::UnboundedSender<Vec<Request>>,
     pub planner: Planner,
+    /// NEW
+    /// Published working sets, by key.
+    index: Mutex<Index>,
+}
+
+/// NEW
+/// Pages published under a key, and when each key was last used. The index
+/// holds one reference to every page in it, so they outlive the working set
+/// that published them. It is a cache: under memory pressure the entry used
+/// longest ago is dropped.
+#[derive(Default)]
+struct Index {
+    entries: HashMap<String, (Vec<u32>, u64)>,
+    clock: u64,
 }
 
 struct Pool {
@@ -77,6 +92,7 @@ impl Engine {
             })),
             queue,
             planner,
+            index: Mutex::default(),
         }
     }
 
@@ -88,6 +104,8 @@ impl Engine {
         Some(pages)
     }
 
+    /// UPDATED
+    /// Drops cached prefixes before it waits on other inferlets.
     pub async fn alloc_wait(&self, id: u64, n: u32) -> Result<Vec<u32>, String> {
         loop {
             // Listen before checking, so a free between the two is not missed.
@@ -98,9 +116,60 @@ impl Engine {
                 self.planner.running(id);
                 return Ok(pages);
             }
+            // Before waiting on other inferlets, give up cached prefixes.
+            if self.evict_oldest() {
+                continue;
+            }
             self.planner.wait(id)?;
             freed.await;
         }
+    }
+
+    /// NEW
+    /// Publish `pages` under `key`, replacing what was there.
+    pub fn publish(&self, key: String, pages: &[u32]) {
+        self.share(pages);
+        let mut index = self.index.lock().unwrap();
+        index.clock += 1;
+        let entry = (pages.to_vec(), index.clock);
+        if let Some((old, _)) = index.entries.insert(key, entry) {
+            self.free(old);
+        }
+    }
+
+    /// NEW
+    /// The pages published under `key`, with one more holder each.
+    pub fn open(&self, key: &str) -> Option<Vec<u32>> {
+        let mut index = self.index.lock().unwrap();
+        index.clock += 1;
+        let clock = index.clock;
+        let (pages, used) = index.entries.get_mut(key)?;
+        *used = clock;
+        self.share(pages);
+        Some(pages.clone())
+    }
+
+    /// NEW
+    pub fn unpublish(&self, key: &str) -> bool {
+        let old = self.index.lock().unwrap().entries.remove(key);
+        old.map(|(pages, _)| self.free(pages)).is_some()
+    }
+
+    /// NEW
+    /// Drop the entry used longest ago. False if the index is empty.
+    fn evict_oldest(&self) -> bool {
+        let mut index = self.index.lock().unwrap();
+        let Some(key) = index
+            .entries
+            .iter()
+            .min_by_key(|(_, (_, used))| *used)
+            .map(|(k, _)| k.clone())
+        else {
+            return false;
+        };
+        let (pages, _) = index.entries.remove(&key).unwrap();
+        self.free(pages);
+        true
     }
 
     /// One more holder for each page.
