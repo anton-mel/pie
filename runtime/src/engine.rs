@@ -2,10 +2,11 @@
 //! forward submitted since the last step as one batch.
 
 use crate::model::{Model, Seq};
+use crate::planner::Planner;
 use anyhow::Result;
 use std::sync::{Arc, Mutex};
 use tokenizers::Tokenizer;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{Notify, mpsc, oneshot};
 
 pub struct Distribution {
     pub ids: Vec<u32>,
@@ -40,11 +41,13 @@ pub struct Engine {
     pub page_size: u32,
     pool: Arc<Mutex<Pool>>,
     queue: mpsc::UnboundedSender<Vec<Request>>,
+    pub planner: Planner,
 }
 
 struct Pool {
     free: Vec<u32>,
     refs: Vec<u32>,
+    freed: Arc<Notify>,
 }
 
 impl Pool {
@@ -55,6 +58,7 @@ impl Pool {
                 self.free.push(p);
             }
         }
+        self.freed.notify_waiters();
     }
 }
 
@@ -63,6 +67,7 @@ impl Engine {
         let page_size = model.page_size as u32;
         let (queue, rx) = mpsc::unbounded_channel();
         std::thread::spawn(move || batch_loop(model, rx));
+        let planner = Planner::new();
         Self {
             tokenizer,
             eos,
@@ -70,8 +75,10 @@ impl Engine {
             pool: Arc::new(Mutex::new(Pool {
                 free: (0..pages).rev().collect(),
                 refs: vec![0; pages as usize],
+                freed: planner.freed.clone(),
             })),
             queue,
+            planner,
         }
     }
 
@@ -81,6 +88,23 @@ impl Engine {
         let pages = pool.free.split_off(at);
         pages.iter().for_each(|&p| pool.refs[p as usize] = 1);
         Some(pages)
+    }
+
+    /// `alloc` for inferlet `id`, waiting for pages instead of failing when
+    /// there are not enough. The planner decides when waiting is hopeless.
+    pub async fn alloc_wait(&self, id: u64, n: u32) -> Result<Vec<u32>, String> {
+        loop {
+            // Listen before checking, so a free between the two is not missed.
+            let freed = self.planner.freed.notified();
+            tokio::pin!(freed);
+            freed.as_mut().enable();
+            if let Some(pages) = self.alloc(n) {
+                self.planner.running(id);
+                return Ok(pages);
+            }
+            self.planner.wait(id)?;
+            freed.await;
+        }
     }
 
     /// One more holder for each page.

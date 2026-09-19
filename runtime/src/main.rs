@@ -4,6 +4,7 @@
 mod engine;
 mod host;
 mod model;
+mod planner;
 
 use anyhow::{Context, Result};
 use candle_core::{DType, Device};

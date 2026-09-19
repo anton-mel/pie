@@ -1,32 +1,36 @@
-# Pie Tutorial: async forward
+# Pie Tutorial: planner
 
-Now `forward` returns a `pending-forward` at once, and `wait()` gets the
-result (`wit/pie.wit`). The host keeps what an inferlet submits and hands it
-to the engine all together when the inferlet next waits, so everything
-submitted before a wait lands in the same model step. This is how the OS
-does async I/O: submit many requests, then wait for them, instead of one
-blocking call at a time.
+Until chapter 4, `reserve` failed as soon as the KV pool was empty. With many
+inferlets that is worse than it sounds: each grabs part of the pool, none can
+finish, and all but one fail with "out of KV pages" even when the pool could
+serve them one after another.
 
-Beam search now submits all beams, then waits on each. With 8 beams each
-decoding step is one batch of 8 instead of 8 batches of 1 (0.73s instead of
-1.2s for 32 tokens). It is not 8x, because attention still runs sequence by
-sequence and top-k runs on the CPU. Those belong to the engine, not to Pie's
-design, and a later chapter fixes them.
+Now an inferlet that asks for pages that are not free waits for someone to
+free some (`alloc_wait` in `runtime/src/engine.rs`). That works while at
+least one inferlet is still running. When every live inferlet is waiting,
+nobody will ever free a page: that is a deadlock, and the planner
+(`runtime/src/planner.rs`) breaks it by evicting the youngest. Evicting kills
+its wasm instance, which frees every page it held, and it restarts from
+scratch once another inferlet has finished. The oldest is never evicted, so
+it always makes progress. This is how the OS handles memory pressure: it
+picks a victim (the OOM killer) rather than letting everyone hang.
+
+Four text completions that each need 4 pages, in a pool of 8: before, three
+failed. Now all four finish, with the same output as with a big pool.
 
 > [!WARNING]
-> A forward in flight must keep its pages. The inferlet can drop a working
-> set while its forward is still queued, and without care those pages would
-> go back to the pool and be handed to someone else before the model writes
-> into them. So every request holds its pages (`Hold` in
-> `runtime/src/engine.rs`) until the model has run it.
+> An evicted inferlet starts over, so the work it had done is lost and runs
+> again. A cheaper way would be to copy its pages to CPU memory and bring
+> them back later (swapping). Logical pages from chapter 2 make that
+> possible without the inferlet noticing, but it is not done here.
 
 ## Read Order
 
-Read `pending-forward` and `forward` in `wit/pie.wit`. Then, in
-`runtime/src/host.rs`, `forward` (it now queues a request in `unsent`) and
-`wait` (it sends `unsent` to the engine). In `runtime/src/engine.rs`, read
-`Request`, `Hold` and `batch_loop`. Finally `Context::submit` in
-`inferlet/src/lib.rs` and the submit-then-wait loop in `examples/beam-search`.
+Read `runtime/src/planner.rs` from the top: `wait` decides when to evict,
+`leave` and `until_exit` decide when to restart. Then `alloc_wait` in
+`runtime/src/engine.rs`, which `reserve` and the copy-on-write step in
+`forward` now use (`runtime/src/host.rs`). Finally `Host::run`, which kills
+an evicted instance and starts it again.
 
 ## Run MacOS
 
@@ -35,6 +39,7 @@ rustup target add wasm32-wasip2
 cargo build --release -p pie --features metal
 cargo build --release -p text-completion -p beam-search --target wasm32-wasip2
 
-./target/release/pie target/wasm32-wasip2/release/text_completion.wasm -- "The capital of France is" 24
-./target/release/pie target/wasm32-wasip2/release/beam_search.wasm -- "Once upon a time" 8 32
+# 4 runs, each needing 4 pages, in a pool of 8 pages
+./target/release/pie --kv-pages 8 -i 4 target/wasm32-wasip2/release/text_completion.wasm -- \
+  "In a small village at the edge of a dense forest, there lived an old clockmaker who repaired every clock in town. One winter morning" 40
 ```

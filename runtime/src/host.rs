@@ -40,6 +40,8 @@ pub struct PendingForward {
 
 struct State {
     engine: Arc<Engine>,
+    /// This inferlet's id with the planner.
+    id: u64,
     /// Forwards submitted since the inferlet last waited.
     unsent: Vec<Request>,
     wasi: WasiCtx,
@@ -69,7 +71,7 @@ impl model::HostKvWorkingSet for State {
     }
 
     async fn reserve(&mut self, ws: Resource<KvWorkingSet>, n: u32) -> Result<(), String> {
-        let pages = self.engine.alloc(n).ok_or("out of KV pages")?;
+        let pages = self.engine.alloc_wait(self.id, n).await?;
         self.table.get_mut(&ws).map_err(|e| e.to_string())?.pages.extend(pages);
         Ok(())
     }
@@ -162,7 +164,7 @@ impl model::Host for State {
         let shared: Vec<usize> = (first as usize..need)
             .filter(|&i| self.engine.is_shared(ws.pages[i]))
             .collect();
-        let fresh = self.engine.alloc(shared.len() as u32).ok_or("out of KV pages")?;
+        let fresh = self.engine.alloc_wait(self.id, shared.len() as u32).await?;
         let copies = shared
             .into_iter()
             .zip(fresh)
@@ -206,15 +208,39 @@ impl Host {
         Ok(Component::from_file(&self.wasm, path)?)
     }
 
+    /// Run an inferlet to the end. If the planner evicts it to free pages,
+    /// start it again from scratch.
     pub async fn run(&self, component: &Component, args: Vec<String>) -> Result<Result<String, String>> {
+        loop {
+            let (id, kill) = self.engine.planner.join();
+            let result = tokio::select! {
+                r = self.run_once(id, component, &args) => Some(r),
+                _ = kill.notified() => None,
+            };
+            // Dropping the losing branch above dropped the instance, and with
+            // it every page it held.
+            self.engine.planner.leave(id, result.is_none());
+            match result {
+                Some(r) => return r,
+                None => {
+                    eprintln!("inferlet {id} evicted to free KV pages, restarting");
+                    self.engine.planner.until_exit().await;
+                }
+            }
+        }
+    }
+
+    async fn run_once(&self, id: u64, component: &Component, args: &[String]) -> Result<Result<String, String>> {
         let state = State {
             engine: self.engine.clone(),
-            unsent: vec![], /// NEW
+            id,
+            unsent: vec![],
+            /// NEW
             wasi: WasiCtx::builder().inherit_stdio().build(),
             table: ResourceTable::new(),
         };
         let mut store = Store::new(&self.wasm, state);
         let app = Inferlet::instantiate_async(&mut store, component, &self.linker).await?;
-        Ok(app.pie_core_run().call_run(&mut store, &args).await?)
+        Ok(app.pie_core_run().call_run(&mut store, args).await?)
     }
 }
