@@ -31,6 +31,18 @@ struct Args {
     /// Most tokens in one model step. Longer prefills are split.
     #[arg(long, default_value_t = 256)]
     step_tokens: usize,
+    /// NEW
+    /// A directory inferlets may read, as `/data`.
+    #[arg(long)]
+    allow_dir: Option<std::path::PathBuf>,
+    /// NEW
+    /// Let inferlets also write in `--allow-dir`.
+    #[arg(long)]
+    allow_write: bool,
+    /// NEW
+    /// An address (host:port) inferlets may open TCP connections to.
+    #[arg(long)]
+    allow_connect: Vec<String>,
     #[arg(long)]
     cpu: bool,
     /// Run the instances one after another instead of all at once.
@@ -51,6 +63,18 @@ async fn main() -> Result<()> {
         page_size: args.page_size,
         step_tokens: args.step_tokens,
         cpu: args.cpu,
+        policy: runtime::inferlet::Policy {
+            dir: args.allow_dir.clone(),
+            writable: args.allow_write,
+            connect: args
+                .allow_connect
+                .iter()
+                .map(|a| std::net::ToSocketAddrs::to_socket_addrs(a).with_context(|| format!("bad address {a}")))
+                .collect::<Result<Vec<_>>>()?
+                .into_iter()
+                .flatten()
+                .collect(),
+        },
     })?;
     if let Some(addr) = &args.serve {
         let home = std::env::var("HOME").context("HOME is not set")?;

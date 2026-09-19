@@ -19,7 +19,6 @@ use tokio_tungstenite::tungstenite::Message;
 type Tx = SplitSink<WebSocketStream<TcpStream>, Message>;
 type Rx = SplitStream<WebSocketStream<TcpStream>>;
 
-/// UPDATED
 pub async fn serve(host: Arc<Host>, programs: Arc<Programs>, addr: &str) -> Result<()> {
     let processes = Arc::new(Processes::new(host.clone()));
     let listener = TcpListener::bind(addr).await?;
@@ -35,7 +34,6 @@ pub async fn serve(host: Arc<Host>, programs: Arc<Programs>, addr: &str) -> Resu
     }
 }
 
-/// UPDATED
 async fn handle(host: Arc<Host>, programs: Arc<Programs>, processes: Arc<Processes>, conn: TcpStream) -> Result<()> {
     let (mut tx, mut rx) = tokio_tungstenite::accept_async(conn).await?.split();
     send(&mut tx, ServerMessage::Hello { version: VERSION }).await?;
@@ -148,7 +146,6 @@ async fn handle(host: Arc<Host>, programs: Arc<Programs>, processes: Arc<Process
     Ok(())
 }
 
-/// UPDATED
 /// The next message from the client; none once it has left.
 async fn next(rx: &mut Rx) -> Option<ClientMessage> {
     loop {

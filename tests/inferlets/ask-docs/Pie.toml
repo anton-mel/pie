@@ -1,0 +1,4 @@
+[package]
+name = "ask-docs"
+version = "0.1.0"
+description = "Answer a question about a document the inferlet fetches itself"

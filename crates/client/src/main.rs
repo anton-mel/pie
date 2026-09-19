@@ -24,7 +24,6 @@ struct Args {
 }
 
 #[derive(Subcommand)]
-/// UPDATED
 enum Command {
     /// Install a program, so it can be run by the name in its manifest.
     Install {

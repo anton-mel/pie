@@ -1,55 +1,51 @@
-# Chapter #18: Processes
+# Chapter #19: Sandbox
 
-Until chapter 17, a program lived exactly as long as the connection that
-launched it: if the client went away, the program was dropped. Nothing
-could be long-running, and nobody else could look at a program while it ran.
+Until chapter 18, an inferlet could reach nothing but the model and stdio:
+no files, no network. That is safe, but an agent that uses tools needs to
+read a document or call a service.
 
-In chapter 18 a launched program is a process with an id
-(`crates/runtime/src/inferlet/process.rs`), and it outlives the client that
-started it. What it sends while nobody listens is kept. Any client can
-attach to it later: it first gets what it missed, then what comes next, and
-can send it messages. A client leaving only detaches. How a process ends,
-whether it returned, failed or was killed, is recorded in one place, and
-killing one drops its instance and every page it held.
+In chapter 19 each instance runs under a policy
+(`crates/runtime/src/inferlet/sandbox.rs`) that decides what it may reach
+besides the model. By default, still nothing. `--allow-dir DIR` lets
+inferlets read `DIR`, which they see as `/data` (`--allow-write` also lets
+them change it), and `--allow-connect IP:PORT` lets them open TCP
+connections to that address and no other. The policy becomes the instance's
+WASI context, so the inferlet uses ordinary file and socket calls, and the
+runtime answers them or refuses them.
 
-The protocol is now version 2 (`crates/client-api`): `Launch` answers with
-the process id, and there are `Attach`, `List` and `Kill`. `pie-client` has
-matching commands:
+`tests/inferlets/ask-docs` answers a question about a
+document it fetches itself, from `/data` or over HTTP:
 
-```
-pie-client run decode-latency -- 400    # prints "process 1", then Ctrl-C
-pie-client ps                           #     1  running  decode-latency
-pie-client attach 1                     # the result it produced meanwhile
-pie-client kill 1
-```
+| policy | `/data/notes.txt` | `http://127.0.0.1:8765/notes.txt` |
+|---|---|---|
+| none | no such file | permission denied |
+| `--allow-dir docs` | answered | permission denied |
+| `--allow-connect 127.0.0.1:8765` | no such file | answered |
 
-A chat can outlive its client too: one client starts `chat-session` and
-leaves, another attaches later and continues the same conversation.
+With `--allow-connect 127.0.0.1:8765`, the same server on port 8766 is
+refused, and with `--allow-dir`, nothing outside `/data` is visible.
 
 > [!NOTE]
-> Processes live in memory: they are lost when the server stops.
+> The policy is set when `pie` starts and applies to every instance. The
+> reference sets it per instance, with allow and deny rules, and also links
+> WASI HTTP, so inferlets can make HTTP requests without writing them by
+> hand.
 
 ## Read Order
 
-Read `crates/runtime/src/inferlet/process.rs` from the top: `spawn`, `emit`
-(where every event and the end of a process go), `attach` and `detach`.
-Then the new messages in `crates/client-api/src/lib.rs`, `handle` in
-`crates/gateway/src/lib.rs`, and the new commands in
-`crates/client/src/main.rs`.
+Read `Policy` in `crates/runtime/src/inferlet/sandbox.rs`, then where
+`Host::run_once` builds each instance's WASI context from it in
+`crates/runtime/src/inferlet.rs`, and the new flags in `src/main.rs`.
+Finally `tests/inferlets/ask-docs`.
 
 ## Run MacOS
 
 ```bash
 rustup target add wasm32-wasip2
 cargo build --release -p pie --features metal
-cargo build --release -p client
-cargo build --release -p chat-session -p decode-latency --target wasm32-wasip2
+cargo build --release -p ask-docs --target wasm32-wasip2
 
-./target/release/pie --serve 127.0.0.1:9123
-
-# in another terminal
-./target/release/pie-client install target/wasm32-wasip2/release/decode_latency.wasm tests/inferlets/decode-latency/Pie.toml
-./target/release/pie-client run decode-latency -- 400    # then Ctrl-C
-./target/release/pie-client ps
-./target/release/pie-client attach 1
+mkdir -p docs && echo "The wifi password is sunflower42." > docs/notes.txt
+./target/release/pie target/wasm32-wasip2/release/ask_docs.wasm -- /data/notes.txt "What is the wifi password?"
+./target/release/pie --allow-dir docs target/wasm32-wasip2/release/ask_docs.wasm -- /data/notes.txt "What is the wifi password?"
 ```

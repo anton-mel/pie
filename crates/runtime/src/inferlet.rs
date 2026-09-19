@@ -4,9 +4,11 @@
 mod host;
 mod process;
 mod program;
+mod sandbox;
 
 pub use process::{Event, Process, ProcessId, ProcessInfo, Processes};
 pub use program::Programs;
+pub use sandbox::Policy;
 
 use crate::engine::{Engine, Reply, Request};
 use anyhow::Result;
@@ -73,15 +75,25 @@ pub struct Host {
     wasm: Wasm,
     linker: Linker<State>,
     engine: Arc<Engine>,
+    /// NEW
+    /// What every instance may reach besides the model.
+    policy: Policy,
 }
 
 impl Host {
-    pub fn new(engine: Arc<Engine>) -> Result<Self> {
+    /// UPDATED
+    /// Takes the sandbox policy its instances run under.
+    pub fn new(engine: Arc<Engine>, policy: Policy) -> Result<Self> {
         let wasm = Wasm::default();
         let mut linker = Linker::new(&wasm);
         wasmtime_wasi::p2::add_to_linker_async(&mut linker)?;
         Inferlet::add_to_linker::<_, HasSelf<_>>(&mut linker, |s| s)?;
-        Ok(Self { wasm, linker, engine })
+        Ok(Self {
+            wasm,
+            linker,
+            engine,
+            policy,
+        })
     }
 
     pub fn load(&self, path: &str) -> Result<Component> {
@@ -132,7 +144,7 @@ impl Host {
             session,
             id,
             unsent: vec![],
-            wasi: WasiCtx::builder().inherit_stdio().build(),
+            wasi: self.policy.wasi()?,
             table: ResourceTable::new(),
         };
         let mut store = Store::new(&self.wasm, state);

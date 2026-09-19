@@ -21,6 +21,9 @@ pub struct Config {
     pub step_tokens: usize,
     /// Run on the CPU instead of the GPU.
     pub cpu: bool,
+    /// NEW
+    /// What inferlets may reach besides the model.
+    pub policy: runtime::inferlet::Policy,
 }
 
 /// Load the model and start the runtime on it.
@@ -40,5 +43,5 @@ pub fn start(config: &Config) -> Result<Arc<Host>> {
 
     let engine: Box<dyn engine::Engine> = Box::new(model);
     let runtime = runtime::engine::Engine::new(engine, files.tokenizer, files.eos, config.kv_pages, config.step_tokens);
-    Host::new(Arc::new(runtime)).map(Arc::new)
+    Host::new(Arc::new(runtime), config.policy.clone()).map(Arc::new)
 }

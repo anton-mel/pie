@@ -5,13 +5,11 @@
 
 use serde::{Deserialize, Serialize};
 
-/// UPDATED
 /// Bumped whenever a message changes shape.
 pub const VERSION: u32 = 2;
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
-/// UPDATED
 pub enum ClientMessage {
     /// Install a program so it can be launched by name. Its wasm follows as
     /// the next frame, a binary one.
@@ -34,7 +32,6 @@ pub enum ClientMessage {
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
-/// UPDATED
 pub enum ServerMessage {
     /// The first message on every connection.
     Hello {
@@ -68,7 +65,6 @@ pub enum ServerMessage {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-/// NEW
 pub struct ProcessInfo {
     pub process: u64,
     pub program: String,
