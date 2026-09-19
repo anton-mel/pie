@@ -54,3 +54,7 @@ feature, and explains in its README.
     attention is planned once per step, and all decoding sequences are
     attended together. Batched work gets 18-25% faster, with the same
     results.
+15. **Reference layout** ([`feat/reference-layout`](../../tree/feat/reference-layout)):
+    no new code. The same code moved into the layout of pie-project/pie,
+    with the WIT split into one interface per file, and a list of what the
+    reference adds on top.
