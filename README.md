@@ -1,16 +1,5 @@
 # Pie Tutorial: Inferlets
 
-A minimal rebuild of [Pie](https://github.com/pie-project/pie) (SOSP'25), one
-commit per chapter. Each commit adds one feature and explains how it fits in.
-Expect to spend most of your time reading the code. The chapters walk through
-the design decisions behind Pie in a logical order that is easy to follow, and
-document the codebase along the way.
-
-> [!NOTE]
-> Read the files in the order listed under **Read Order** below.
-
-## Big Picture
-
 Most LLM servers hard-code the generation loop (tokenize, forward, sample,
 repeat) in the engine. Pie moves it out: the loop runs in small user programs,
 **inferlets**, compiled to WebAssembly. Think of it as eBPF for inference. An
