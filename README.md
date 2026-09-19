@@ -5,9 +5,6 @@ million lines of code. This repo rebuilds it from scratch in about a thousand,
 one chapter per branch. Each chapter builds on the previous one, adds one
 feature, and explains in its README.
 
-> [!IMPORTANT]
-> Follow chapter's **Read Order**.
-
 ## Chapters
 
 1. **Inferlets** ([`feat/inferlet`](../../tree/feat/inferlet)): the core. A
