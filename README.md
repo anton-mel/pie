@@ -1,4 +1,4 @@
-# Pie Tutorial: KV working set
+# Chapter #2: KV working set
 
 In chapter 1 an inferlet held raw page ids
 from `alloc-pages` and had to give them back with `free-pages`. That leaked the
