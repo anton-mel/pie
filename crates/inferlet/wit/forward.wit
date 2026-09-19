@@ -7,6 +7,15 @@ interface forward {
         probs: list<f32>,
     }
 
+    /// NEW
+    /// Sampling done on the device, next to the logits: only the chosen
+    /// token and its probability come back. Temperature 0 is greedy;
+    /// `min-p` drops tokens less likely than that share of the most likely.
+    record sampler {
+        temperature: f32,
+        min-p: f32,
+    }
+
     resource pending-forward {
         /// One distribution per entry of `outputs`.
         wait: func() -> result<list<distribution>, string>;
@@ -21,6 +30,11 @@ interface forward {
     /// `allowed`, if given, restricts every returned distribution to
     /// those token ids, renormalized. The inferlet decides what is allowed
     /// at each step, which is how it enforces a format or a grammar.
+    ///
+    /// UPDATED: `sample`, if given, picks each output's token on the device
+    /// instead: its distribution is then just that token and its
+    /// probability, and `top-k` does not apply. It cannot be combined with
+    /// `allowed`.
     forward: func(
         on: borrow<pipeline>,
         kv: borrow<kv-working-set>,
@@ -29,6 +43,7 @@ interface forward {
         positions: list<u32>,
         outputs: list<u32>,
         allowed: option<list<u32>>,
+        sample: option<sampler>,
         top-k: u32,
     ) -> result<pending-forward, string>;
 }

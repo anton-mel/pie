@@ -1,58 +1,59 @@
-# Chapter #25: Model Descriptions
+# Chapter #26: Sampling on the GPU
 
-Until chapter 24, the model was a hand-written Qwen: it guessed the family's
-quirks from which tensors a checkpoint happened to have, and any other
-family was refused.
+Until chapter 25, every output row went back to the host as a full row of
+logits, about 150,000 numbers, and the sampler picked from the 64 most
+likely (chapter 7). The rest of the vocabulary could never be picked.
 
-In chapter 25 each family is described once (`crates/models/src/description.rs`)
-and one transformer follows the description (`transformer.rs`, formerly
-`qwen.rs`), as the reference describes every family once and runs them all
-with one engine. A `Description` holds the sizes, and the switches in which
-families differ: biases on the query, key and value projections (Qwen2), a
-norm on each query and key head (Qwen3), tied embeddings, and the rotary
-base with Llama 3's frequency scaling. `describe` reads it from a model's
-config; there are three families: `qwen2`, `qwen3` and `llama`.
+In chapter 26 an inferlet can attach a small sampling program to a forward
+(`sampler` in `wit/forward.wit`): a temperature and a min-p cut. The engine
+then picks the token on the device, right after the output head, and only
+the token and its probability come back (`Row::Sampled` in
+`crates/engine`). It picks with the Gumbel-max trick: the argmax of
+`logits / T + g`, where `g` is Gumbel noise, is an exact sample from
+softmax(logits / T) over the whole vocabulary.
 
-The chat format is now read from the model itself. A family does not fix
-it: SmolLM2 is a `llama` model that speaks ChatML. The worker looks at the
-chat template a model ships with (`chat_template::detect`) and falls back to
-the family only when there is none.
+On Metal the pick is a kernel of our own (`crates/models/src/sample_kernel.rs`):
+one threadgroup per row applies the min-p cut, adds noise made from a hash
+of (seed, row, token), and reduces to the argmax. The first version used
+candle's GPU random numbers instead, and a statistical test caught it: over
+8,000 samples the most likely token came up 0.331 of the time instead of
+0.357, five standard deviations off, because Gumbel-max depends on the
+noise's tails. The same test on the CPU was right, and with our own noise
+the GPU is too:
 
-Two Llama models run with no other change, next to Qwen:
+| setting | " blue" | " red" | " green" | excluded picked |
+|---|---|---|---|---|
+| T = 1 | 0.366 / 0.357 | 0.237 / 0.245 | 0.082 / 0.085 | 0 |
+| T = 0.5 | 0.634 / 0.637 | 0.297 / 0.301 | 0.036 / 0.036 | 0 |
+| T = 1, min-p 0.3 | 0.589 / 0.593 | 0.411 / 0.407 | 0 / 0 | 0 |
 
-| model | family | chat format |
-|---|---|---|
-| `Qwen/Qwen3-0.6B` | qwen3 | ChatML |
-| `HuggingFaceTB/SmolLM2-135M-Instruct` | llama | ChatML |
-| `unsloth/Llama-3.2-1B-Instruct` | llama, rotary scaling | Llama 3 |
+(sampled / exact, 8,000 samples each, all within two standard deviations)
 
-```
-$ pie run --model unsloth/Llama-3.2-1B-Instruct chat.wasm -- "What is the capital of France?" "And of Germany?" "Which of the two cities is bigger?"
-    assistant: Paris.
-    assistant: Berlin.
-    assistant: Berlin is larger.
-```
+`tests/inferlets/device-sampling` is `parallel-sampling` with its picks
+moved to the device. On this Mac it is 6-8% faster: memory is shared, so
+the logits never had far to go. The gain that matters is that every token
+can now be picked.
 
 > [!NOTE]
-> The reference goes much further: a family's forward pass is written in a
-> DSL, compiled into a plan per GPU backend (`crates/model-ir`, `model-dsl`,
-> `model-compiler`), and checkpoints are checked against an import contract
-> (`crates/checkpoint`). Here a description is data, and the transformer is
-> still ordinary candle code.
+> The reference goes much further: an inferlet writes its sampler as code
+> (the ETA language), which is compiled and run next to the logits, so any
+> sampler, not only these two knobs, runs on the device.
 
 ## Read Order
 
-Read `crates/models/src/description.rs`, then `Model::load` in
-`crates/models/src/transformer.rs`. Then `Files` in
-`crates/worker/src/weights.rs`, and `detect` in `crates/chat-template`.
+Read `Row` and `Sampling` in `crates/engine/src/lib.rs`, then `sample` at
+the end of `crates/models/src/transformer.rs` and
+`crates/models/src/sample_kernel.rs`. Then `sampler` in `wit/forward.wit`,
+`submit_sampled` in `crates/inferlet/src/lib.rs`, and
+`tests/inferlets/device-sampling`.
 
 ## Run MacOS
 
 ```bash
 rustup target add wasm32-wasip2
 cargo build --release -p pie --features metal
-cargo build --release -p chat --target wasm32-wasip2
+cargo build --release -p device-sampling -p parallel-sampling --target wasm32-wasip2
 
-./target/release/pie run --model HuggingFaceTB/SmolLM2-135M-Instruct target/wasm32-wasip2/release/chat.wasm -- "What is the capital of France?"
-./target/release/pie run --model unsloth/Llama-3.2-1B-Instruct target/wasm32-wasip2/release/chat.wasm -- "What is the capital of France?"
+./target/release/pie run target/wasm32-wasip2/release/device_sampling.wasm -- "Once upon a time" 8 48
+./target/release/pie run target/wasm32-wasip2/release/parallel_sampling.wasm -- "Once upon a time" 8 48
 ```

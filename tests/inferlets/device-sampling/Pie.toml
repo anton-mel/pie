@@ -1,0 +1,4 @@
+[package]
+name = "device-sampling"
+version = "0.1.0"
+description = "Several samples of one prompt, picked on the GPU"

@@ -20,7 +20,7 @@ wit_bindgen::generate!({
 mod sample;
 
 pub use exports::pie::inferlet::run::Guest;
-pub use pie::inferlet::forward::{self, Distribution, PendingForward};
+pub use pie::inferlet::forward::{self, Distribution, PendingForward, Sampler as DeviceSampler};
 pub use pie::inferlet::pipeline::Pipeline;
 pub use pie::inferlet::working_set::KvWorkingSet;
 pub use pie::inferlet::{chat, model, session, tokenizer};
@@ -161,13 +161,33 @@ impl Context {
         Ok(self.submit_rows(&[last], Some(allowed), top_k)?.wait()?.remove(0))
     }
 
-    /// Submits on the context's pipeline.
     /// Submit the pending tokens, asking for a distribution after each
     /// token listed in `outputs` (indices into the pending tokens).
     pub fn submit_rows(
         &mut self,
         outputs: &[u32],
         allowed: Option<&[u32]>,
+        top_k: u32,
+    ) -> Result<PendingForward, String> {
+        self.submit_with(outputs, allowed, None, top_k)
+    }
+
+    /// NEW
+    /// Like `submit`, but the next token is picked on the device, next to
+    /// the logits: the distribution that comes back is just that token and
+    /// its probability.
+    pub fn submit_sampled(&mut self, sampler: DeviceSampler) -> Result<Pending, String> {
+        let last = self.pending.len().saturating_sub(1) as u32;
+        Ok(Pending(self.submit_with(&[last], None, Some(sampler), 1)?))
+    }
+
+    /// UPDATED
+    /// What every submit comes down to, now with an optional device sampler.
+    fn submit_with(
+        &mut self,
+        outputs: &[u32],
+        allowed: Option<&[u32]>,
+        sample: Option<DeviceSampler>,
         top_k: u32,
     ) -> Result<PendingForward, String> {
         if self.pending.is_empty() {
@@ -194,6 +214,7 @@ impl Context {
             &positions,
             outputs,
             allowed,
+            sample,
             top_k,
         )?;
         self.tokens.append(&mut self.pending);

@@ -4,6 +4,8 @@
 mod description;
 #[cfg(feature = "metal")]
 mod paged_attention;
+#[cfg(feature = "metal")]
+mod sample_kernel;
 mod transformer;
 
 pub use description::{Description, describe, supports};

@@ -7,7 +7,7 @@
 //! long prompt slows everyone a little instead of stopping them.
 
 use crate::engine::{Distribution, Request, top_k};
-use ::engine::{Engine, Seq};
+use ::engine::{Engine, Row, Seq};
 use std::collections::HashSet;
 use tokio::sync::mpsc;
 
@@ -52,10 +52,13 @@ impl Job {
                 .collect(),
             pages: s.pages.clone(),
             kv_len: s.kv_len - (s.tokens.len() - to),
+            sample: s.sample,
         }
     }
 }
 
+/// UPDATED
+/// Takes rows the engine already sampled as they are.
 /// Runs its steps on an `Engine`.
 /// Orders jobs by pipeline instead of by the pages they share.
 /// Counts steps, tokens and forwards in `metrics`.
@@ -142,7 +145,13 @@ pub fn run(
                     let new: Vec<_> = rows
                         .by_ref()
                         .take(seq.outputs.len())
-                        .map(|r| top_k(r, k, allowed))
+                        .map(|row| match row {
+                            Row::Logits(logits) => top_k(logits, k, allowed),
+                            Row::Sampled { token, prob } => Distribution {
+                                ids: vec![token],
+                                probs: vec![prob],
+                            },
+                        })
                         .collect();
                     job.rows.extend(new);
                     job.done += n;

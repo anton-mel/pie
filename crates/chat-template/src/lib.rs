@@ -35,7 +35,6 @@ pub fn for_model(model_type: &str) -> Option<Box<dyn Template>> {
     })
 }
 
-/// NEW
 /// The template whose markers appear in a model's own chat template text
 /// (the Jinja in its `tokenizer_config.json`).
 pub fn detect(chat_template: &str) -> Option<Box<dyn Template>> {

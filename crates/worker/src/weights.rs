@@ -7,10 +7,8 @@ use std::path::PathBuf;
 use tokenizers::Tokenizer;
 
 pub struct Files {
-    /// UPDATED
     /// The model as the transformer needs to know it.
     pub description: models::Description,
-    /// NEW
     /// The chat template text the model ships with, if any.
     pub chat_template: Option<String>,
     /// The model family, as its config names it (`model_type`).

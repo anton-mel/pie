@@ -5,7 +5,7 @@ use crate::Description;
 use anyhow::{Result, ensure};
 use candle_core::{DType, Device, Tensor};
 use candle_nn::{Embedding, Linear, Module, RmsNorm, VarBuilder, rotary_emb::rope};
-use engine::Seq;
+use engine::{Row, Seq};
 
 struct Layer {
     q: Linear,
@@ -39,7 +39,6 @@ pub struct Model {
 }
 
 impl Model {
-    /// UPDATED
     /// Loads any described family: what differs comes from `d`, not from
     /// which tensors the checkpoint happens to have.
     pub fn load(d: &Description, vb: VarBuilder, pages: usize, page_size: usize) -> Result<Self> {
@@ -365,12 +364,81 @@ fn attend(q: &Tensor, kc: &Tensor, vc: &Tensor, p: &Prefill, nkv: usize) -> Resu
 }
 
 /// The model as an engine: the runtime reaches it only through this.
+/// UPDATED
+/// Samples on the device for sequences that ask for it: only a token and its
+/// probability leave the GPU, not a row of logits.
 impl engine::Engine for Model {
     fn page_size(&self) -> usize {
         self.page_size
     }
 
-    fn forward(&mut self, seqs: &[Seq]) -> Result<Vec<Vec<f32>>> {
-        Ok(Model::forward(self, seqs)?.to_vec2::<f32>()?)
+    fn forward(&mut self, seqs: &[Seq]) -> Result<Vec<Row>> {
+        let logits = Model::forward(self, seqs)?;
+        let mut rows = Vec::new();
+        let mut at = 0;
+        for s in seqs {
+            let n = s.outputs.len();
+            if n == 0 {
+                continue;
+            }
+            let mine = logits.narrow(0, at, n)?;
+            at += n;
+            match s.sample {
+                None => rows.extend(mine.to_vec2::<f32>()?.into_iter().map(Row::Logits)),
+                Some(sampling) => rows.extend(sample(&mine, sampling)?),
+            }
+        }
+        Ok(rows)
     }
+}
+
+/// NEW
+/// Pick one token per row of `logits`, on whatever device they are on. With
+/// the Gumbel-max trick, the argmax of `logits / T + g`, where `g` is
+/// Gumbel noise, is an exact sample from softmax(logits / T): a few
+/// elementwise operations and an argmax, over the whole vocabulary.
+fn sample(logits: &Tensor, s: engine::Sampling) -> Result<Vec<Row>> {
+    let t = if s.temperature > 0.0 { s.temperature as f64 } else { 1.0 };
+    let scaled = (logits / t)?;
+    let probs = candle_nn::ops::softmax_last_dim(&scaled)?;
+    let scaled = if s.min_p > 0.0 {
+        let floor = (probs.max_keepdim(1)? * s.min_p as f64)?;
+        let keep = probs.broadcast_ge(&floor)?;
+        keep.where_cond(&scaled, &scaled.ones_like()?.affine(0.0, f64::NEG_INFINITY)?)?
+    } else {
+        scaled
+    };
+    #[cfg(feature = "metal")]
+    let on_metal = logits.device().is_metal();
+    #[cfg(not(feature = "metal"))]
+    let on_metal = false;
+    let tokens = if s.temperature > 0.0 && on_metal {
+        // Our own kernel: candle's GPU random numbers skew Gumbel-max.
+        #[cfg(feature = "metal")]
+        {
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static CALLS: AtomicU64 = AtomicU64::new(0x5eed);
+            let op = crate::sample_kernel::GumbelArgmax {
+                temperature: s.temperature,
+                min_p: s.min_p,
+                seed: CALLS.fetch_add(1, Ordering::Relaxed),
+            };
+            logits.contiguous()?.apply_op1_no_bwd(&op)?
+        }
+        #[cfg(not(feature = "metal"))]
+        unreachable!()
+    } else if s.temperature > 0.0 {
+        let u = Tensor::rand(1e-20f32, 1.0, scaled.shape(), scaled.device())?;
+        let gumbel = u.log()?.neg()?.log()?.neg()?;
+        (scaled + gumbel)?.argmax(1)?
+    } else {
+        scaled.argmax(1)?
+    };
+    let chosen = probs.gather(&tokens.unsqueeze(1)?, 1)?.squeeze(1)?;
+    let (tokens, chosen) = (tokens.to_vec1::<u32>()?, chosen.to_vec1::<f32>()?);
+    Ok(tokens
+        .into_iter()
+        .zip(chosen)
+        .map(|(token, prob)| Row::Sampled { token, prob })
+        .collect())
 }

@@ -6,7 +6,8 @@ use ::engine::Seq;
 use wasmtime::component::Resource;
 
 impl forward::Host for State {
-    /// Submits on a pipeline.
+    /// UPDATED
+    /// Passes a sampler on to the engine.
     async fn forward(
         &mut self,
         on: Resource<Pipeline>,
@@ -16,6 +17,7 @@ impl forward::Host for State {
         positions: Vec<u32>,
         outputs: Vec<u32>,
         allowed: Option<Vec<u32>>,
+        sample: Option<forward::Sampler>,
         top_k: u32,
     ) -> Result<Resource<PendingForward>, String> {
         let pipeline = self.table.get(&on).map_err(|e| e.to_string())?.id;
@@ -33,6 +35,10 @@ impl forward::Host for State {
 
         if tokens.is_empty() || tokens.len() != positions.len() || tokens.len() > kv_len as usize {
             return Err("tokens/positions do not fit kv-len".into());
+        }
+
+        if sample.is_some() && allowed.is_some() {
+            return Err("sampling on the device cannot be combined with allowed tokens".into());
         }
 
         if outputs.iter().any(|&i| i as usize >= tokens.len()) {
@@ -77,6 +83,10 @@ impl forward::Host for State {
             outputs,
             pages: ws.pages[..need].to_vec(),
             kv_len: kv_len as usize,
+            sample: sample.map(|s| ::engine::Sampling {
+                temperature: s.temperature,
+                min_p: s.min_p,
+            }),
         };
 
         let (request, reply) = self.engine.request(pipeline, seq, top_k as usize, allowed, on_done);
