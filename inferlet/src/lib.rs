@@ -3,8 +3,8 @@
 //! 1. Generates Rust bindings from `wit/pie.wit`, so an inferlet can call
 //!    the runtime as plain functions.
 //! 2. Adds `Context`, a helper that tracks a sequence's tokens and its KV
-//!    pages. You add text, and it allocates pages, computes positions, and
-//!    calls `forward` for you. Its pages are freed when it is dropped.
+//!    working set. You add text, and it reserves pages, computes positions,
+//!    and calls `forward` for you. Its pages are freed when it is dropped.
 //!
 //! To write an inferlet, implement `Guest::run` and export it:
 //!
@@ -24,14 +24,14 @@ wit_bindgen::generate!({
 });
 
 pub use exports::pie::core::run::Guest;
-pub use pie::core::model::{self, Distribution};
+pub use pie::core::model::{self, Distribution, KvWorkingSet};
 
 pub struct Context {
     /// Tokens whose K/V are in the cache.
     pub tokens: Vec<u32>,
     /// Tokens added but not yet run through the model.
     pending: Vec<u32>,
-    pages: Vec<u32>,
+    kv: KvWorkingSet,
     page_size: u32,
 }
 
@@ -40,7 +40,7 @@ impl Context {
         Self {
             tokens: vec![],
             pending: vec![],
-            pages: vec![],
+            kv: KvWorkingSet::new(),
             page_size: model::kv_page_size(),
         }
     }
@@ -61,16 +61,16 @@ impl Context {
 
         let start = self.tokens.len() as u32;
         let len = start + self.pending.len() as u32;
-        let need = len.div_ceil(self.page_size) as usize;
+        let need = len.div_ceil(self.page_size);
+        let have = self.kv.page_len();
 
-        if need > self.pages.len() {
-            self.pages.extend(model::alloc_pages((need - self.pages.len()) as u32)?);
+        if need > have {
+            self.kv.reserve(need - have)?;
         }
 
-        let last_page_len = len - (need as u32 - 1) * self.page_size;
         let positions: Vec<u32> = (start..len).collect();
 
-        let dist = model::forward(&self.pages[..need], last_page_len, &self.pending, &positions, top_k)?;
+        let dist = model::forward(&self.kv, len, &self.pending, &positions, top_k)?;
         self.tokens.append(&mut self.pending);
 
         Ok(dist)
@@ -97,12 +97,6 @@ impl Context {
         }
 
         Ok(model::detokenize(&out))
-    }
-}
-
-impl Drop for Context {
-    fn drop(&mut self) {
-        model::free_pages(&self.pages);
     }
 }
 

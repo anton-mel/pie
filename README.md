@@ -43,14 +43,21 @@ exposes only low-level primitives: KV pages, the tokenizer, and `forward`.
 
 ## Read Order
 
-Start at `wit/pie.wit`, the whole contract between an inferlet and the runtime.
-Then read `examples/text-completion`, a greedy inferlet in about 10 lines that
-runs simple generation, and `inferlet/src/lib.rs`, where `Context::forward`
-turns tokens into pages and positions. Next, the runtime: `main.rs` loads the
-model and starts the inferlets, `host.rs` implements the contract (`alloc_pages`,
-`forward`) and checks page ownership, `engine.rs` holds the page pool and
-batches calls in `batch_loop`, and `model.rs` runs one step over all
-sequences in `Model::forward`, with attention over each sequence's own pages.
+**Chapter 2: the KV working set.** In chapter 1 an inferlet held raw page ids
+from `alloc-pages` and had to give them back with `free-pages`. That leaked the
+engine's memory layout to the guest and let it free pages it was still using.
+Now a sequence's KV cache is a `kv-working-set` resource (`wit/pie.wit`):
+
+- The inferlet addresses its pages as `0..page-len`; the host maps them to
+  physical pages (`KvWorkingSet` in `runtime/src/host.rs`). This indirection is
+  what later chapters build on: fork, sharing a prefix, moving pages.
+- `forward` takes a borrowed working set and `kv-len` instead of a page list.
+- Dropping the handle frees its pages. The host stores working sets in the
+  instance's resource table, so an inferlet can only name its own, and
+  whatever it leaks is freed with the instance.
+
+Read `wit/pie.wit`, then `KvWorkingSet` and `forward` in `runtime/src/host.rs`,
+then `Context::forward` in `inferlet/src/lib.rs`, which no longer needs `Drop`.
 
 ## Run MacOS
 

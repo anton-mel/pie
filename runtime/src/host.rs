@@ -5,10 +5,9 @@ use crate::engine::Engine;
 use crate::model::Seq;
 use anyhow::Result;
 use pie::core::model::{self, Distribution};
-use std::collections::HashSet;
 use std::sync::Arc;
 
-use wasmtime::component::{Component, Linker, ResourceTable};
+use wasmtime::component::{Component, Linker, Resource, ResourceTable};
 use wasmtime::{Engine as Wasm, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
 
@@ -17,13 +16,26 @@ wasmtime::component::bindgen!({
     world: "inferlet",
     imports: { default: async },
     exports: { default: async },
+    with: { "pie:core/model.kv-working-set": KvWorkingSet },
 });
+
+/// The host side of a `kv-working-set`: logical page `i` is physical page
+/// `pages[i]`. It lives in the instance's resource table, so an inferlet can
+/// only name its own, and its pages go back to the pool when it is dropped,
+/// either by the guest or with the whole instance on exit.
+pub struct KvWorkingSet {
+    engine: Arc<Engine>,
+    pages: Vec<u32>,
+}
+
+impl Drop for KvWorkingSet {
+    fn drop(&mut self) {
+        self.engine.free(self.pages.drain(..));
+    }
+}
 
 struct State {
     engine: Arc<Engine>,
-    /// KV pages this instance holds;
-    /// checked on every use, freed on exit.
-    pages: HashSet<u32>,
     wasi: WasiCtx,
     table: ResourceTable,
 }
@@ -37,27 +49,34 @@ impl WasiView for State {
     }
 }
 
-impl Drop for State {
-    fn drop(&mut self) {
-        self.engine.free(self.pages.drain());
+impl model::HostKvWorkingSet for State {
+    async fn new(&mut self) -> Resource<KvWorkingSet> {
+        let ws = KvWorkingSet {
+            engine: self.engine.clone(),
+            pages: vec![],
+        };
+        self.table.push(ws).expect("resource table full")
+    }
+
+    async fn page_len(&mut self, ws: Resource<KvWorkingSet>) -> u32 {
+        self.table.get(&ws).map_or(0, |ws| ws.pages.len() as u32)
+    }
+
+    async fn reserve(&mut self, ws: Resource<KvWorkingSet>, n: u32) -> Result<(), String> {
+        let pages = self.engine.alloc(n).ok_or("out of KV pages")?;
+        self.table.get_mut(&ws).map_err(|e| e.to_string())?.pages.extend(pages);
+        Ok(())
+    }
+
+    async fn drop(&mut self, ws: Resource<KvWorkingSet>) -> wasmtime::Result<()> {
+        self.table.delete(ws)?;
+        Ok(())
     }
 }
 
 impl model::Host for State {
     async fn kv_page_size(&mut self) -> u32 {
         self.engine.page_size
-    }
-
-    async fn alloc_pages(&mut self, n: u32) -> Result<Vec<u32>, String> {
-        // Owned until `free_pages` or exit.
-        let pages = self.engine.alloc(n).ok_or("out of KV pages")?;
-        self.pages.extend(&pages);
-        Ok(pages)
-    }
-
-    async fn free_pages(&mut self, pages: Vec<u32>) {
-        let owned: Vec<u32> = pages.into_iter().filter(|p| self.pages.remove(p)).collect();
-        self.engine.free(owned);
     }
 
     async fn tokenize(&mut self, text: String) -> Vec<u32> {
@@ -78,27 +97,28 @@ impl model::Host for State {
 
     async fn forward(
         &mut self,
-        pages: Vec<u32>,
-        last_page_len: u32,
+        kv: Resource<KvWorkingSet>,
+        kv_len: u32,
         tokens: Vec<u32>,
         positions: Vec<u32>,
         top_k: u32,
     ) -> Result<Distribution, String> {
-        let ps = self.engine.page_size;
-        if let Some(p) = pages.iter().find(|p| !self.pages.contains(p)) {
-            return Err(format!("page {p} is not yours"));
+        let ws = self.table.get(&kv).map_err(|e| e.to_string())?;
+        // Translate logical pages to physical ones for the pages in use.
+        let need = kv_len.div_ceil(self.engine.page_size) as usize;
+        if need > ws.pages.len() {
+            return Err(format!(
+                "kv-len {kv_len} needs {need} pages, working set has {}",
+                ws.pages.len()
+            ));
         }
-        if pages.is_empty() || last_page_len == 0 || last_page_len > ps {
-            return Err("bad page geometry".into());
-        }
-        let kv_len = (pages.len() as u32 - 1) * ps + last_page_len;
         if tokens.is_empty() || tokens.len() != positions.len() || tokens.len() > kv_len as usize {
-            return Err("tokens/positions do not fit the pages".into());
+            return Err("tokens/positions do not fit kv-len".into());
         }
         let seq = Seq {
             tokens,
             positions,
-            pages,
+            pages: ws.pages[..need].to_vec(),
             kv_len: kv_len as usize,
         };
         let d = self.engine.forward(seq, top_k as usize).await?;
@@ -132,7 +152,6 @@ impl Host {
     pub async fn run(&self, component: &Component, args: Vec<String>) -> Result<Result<String, String>> {
         let state = State {
             engine: self.engine.clone(),
-            pages: HashSet::new(),
             wasi: WasiCtx::builder().inherit_stdio().build(),
             table: ResourceTable::new(),
         };
