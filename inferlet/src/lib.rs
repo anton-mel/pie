@@ -17,8 +17,11 @@ wit_bindgen::generate!({
     default_bindings_module: "inferlet",
 });
 
+mod sample;
+
 pub use exports::pie::core::run::Guest;
 pub use pie::core::model::{self, Distribution, KvWorkingSet, PendingForward};
+pub use sample::Sampler;
 
 pub struct Context {
     pub tokens: Vec<u32>,
@@ -80,7 +83,7 @@ impl Context {
         Ok(Pending(self.submit_rows(&[last], top_k)?))
     }
 
-    /// NEW 
+    /// NEW
     /// Submit the pending tokens, asking for a distribution after each
     /// token listed in `outputs` (indices into the pending tokens).
     pub fn submit_rows(&mut self, outputs: &[u32], top_k: u32) -> Result<PendingForward, String> {
