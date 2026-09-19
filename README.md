@@ -23,3 +23,6 @@ feature, and explains in its README.
 4. **Async forward** ([`feat/async-forward`](../../tree/feat/async-forward)):
    `forward` returns a pending result, like async I/O. An inferlet submits
    all its sequences before waiting, so its beams run in one model step.
+5. **Planner** ([`feat/planner`](../../tree/feat/planner)): when KV pages run
+   out, inferlets wait instead of failing. If all of them wait, the planner
+   evicts the youngest, like the OS OOM killer, and restarts it later.
