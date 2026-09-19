@@ -98,3 +98,6 @@ feature, and explains in its README.
 27. **Many workers** ([`feat/workers`](../../tree/feat/workers)): workers
     are separate processes that register with a gateway, which keeps the
     registry and routes sessions to the least busy worker.
+28. **Grammar** ([`feat/grammar`](../../tree/feat/grammar)): a grammar
+    engine turns a regex or a JSON schema into the tokens allowed at each
+    step, so structured output is always valid.
