@@ -4,6 +4,7 @@
 use anyhow::{Result, ensure};
 use candle_core::{DType, Device, Tensor};
 use candle_nn::{Embedding, Linear, Module, RmsNorm, VarBuilder, rotary_emb::rope};
+use engine::Seq;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -19,16 +20,6 @@ pub struct Config {
     vocab_size: usize,
     #[serde(default)]
     tie_word_embeddings: bool,
-}
-
-pub struct Seq {
-    pub copies: Vec<(u32, u32)>,
-    pub tokens: Vec<u32>,
-    pub positions: Vec<u32>,
-    /// Which of `tokens` to return logits for, by index.
-    pub outputs: Vec<u32>,
-    pub pages: Vec<u32>,
-    pub kv_len: usize,
 }
 
 struct Layer {
@@ -369,4 +360,16 @@ fn attend(q: &Tensor, kc: &Tensor, vc: &Tensor, p: &Prefill, nkv: usize) -> Resu
     let p = candle_nn::ops::softmax_last_dim(&scores.broadcast_add(&p.mask)?)?.to_dtype(v.dtype())?;
     let out = p.matmul(&v)?.reshape((nkv, group, len, hd))?.permute((2, 0, 1, 3))?;
     Ok(out.reshape((len, nh * hd))?)
+}
+
+/// NEW
+/// The model as an engine: the runtime reaches it only through this.
+impl engine::Engine for Model {
+    fn page_size(&self) -> usize {
+        self.page_size
+    }
+
+    fn forward(&mut self, seqs: &[Seq]) -> Result<Vec<Vec<f32>>> {
+        Ok(Model::forward(self, seqs)?.to_vec2::<f32>()?)
+    }
 }

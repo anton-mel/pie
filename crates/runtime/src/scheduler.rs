@@ -7,7 +7,7 @@
 //! long prompt slows everyone a little instead of stopping them.
 
 use crate::engine::{Distribution, Request, top_k};
-use models::{Model, Seq};
+use ::engine::{Engine, Seq};
 use std::collections::HashSet;
 use tokio::sync::mpsc;
 
@@ -56,8 +56,10 @@ impl Job {
     }
 }
 
-pub fn run(mut model: Model, mut rx: mpsc::UnboundedReceiver<Vec<Request>>, step_tokens: usize) {
-    let ps = model.page_size;
+/// UPDATED
+/// Runs its steps on an `Engine`.
+pub fn run(mut model: Box<dyn Engine>, mut rx: mpsc::UnboundedReceiver<Vec<Request>>, step_tokens: usize) {
+    let ps = model.page_size();
     let mut jobs: Vec<Job> = vec![];
     let mut next_id = 0;
     let mut add = |jobs: &mut Vec<Job>, batch: Vec<Request>| {
@@ -109,7 +111,7 @@ pub fn run(mut model: Model, mut rx: mpsc::UnboundedReceiver<Vec<Request>>, step
         picked.sort_by_key(|&(i, _)| jobs[i].id);
 
         let seqs: Vec<Seq> = picked.iter().map(|&(i, n)| jobs[i].chunk(n)).collect();
-        match model.forward(&seqs).and_then(|l| Ok(l.to_vec2::<f32>()?)) {
+        match model.forward(&seqs) {
             Ok(logits) => {
                 let mut rows = logits.into_iter();
                 for (&(i, n), seq) in picked.iter().zip(&seqs) {

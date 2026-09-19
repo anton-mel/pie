@@ -2,7 +2,7 @@
 
 use crate::inferlet::pie::inferlet::forward::{self, Distribution};
 use crate::inferlet::{KvWorkingSet, PendingForward, State};
-use models::Seq;
+use ::engine::Seq;
 use wasmtime::component::Resource;
 
 impl forward::Host for State {

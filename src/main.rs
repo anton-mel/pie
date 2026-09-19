@@ -1,12 +1,8 @@
-//! The `pie` binary: load the model, start the engine, and run N copies of
-//! an inferlet at once (fixed at launch for now), printing each one's output.
+//! The `pie` binary: start a worker, then run N copies of an inferlet at
+//! once and print each one's output, or serve clients.
 
 use anyhow::{Context, Result};
-use candle_core::{DType, Device};
-use candle_nn::VarBuilder;
 use clap::Parser;
-use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::Instant;
 
 /// Parse args.
@@ -45,67 +41,13 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
-    let device = if args.cpu {
-        Device::Cpu
-    } else {
-        Device::metal_if_available(0)?
-    };
-    let dtype = if device.is_cpu() { DType::F32 } else { DType::BF16 };
-
-    let file = |name: &str| -> Result<PathBuf> {
-        let local = PathBuf::from(&args.model).join(name);
-        if local.exists() {
-            return Ok(local);
-        }
-        let repo = hf_hub::api::sync::Api::new()?.model(args.model.clone());
-        repo.get(name)
-            .with_context(|| format!("fetching {name} from {}", args.model))
-    };
-    let json = |name: &str| -> Result<serde_json::Value> { Ok(serde_json::from_slice(&std::fs::read(file(name)?)?)?) };
-
-    let config = json("config.json")?;
-    let weights = match file("model.safetensors.index.json") {
-        Ok(_) => {
-            let index = json("model.safetensors.index.json")?;
-            let mut shards: Vec<String> = index["weight_map"]
-                .as_object()
-                .context("weight_map")?
-                .values()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect();
-            shards.sort();
-            shards.dedup();
-            shards.iter().map(|s| file(s)).collect::<Result<Vec<_>>>()?
-        }
-        Err(_) => vec![file("model.safetensors")?],
-    };
-    let tokenizer = tokenizers::Tokenizer::from_file(file("tokenizer.json")?).map_err(anyhow::Error::msg)?;
-    let eos_value = json("generation_config.json")
-        .map(|g| g["eos_token_id"].clone())
-        .unwrap_or(config["eos_token_id"].clone());
-    let eos: Vec<u32> = match &eos_value {
-        serde_json::Value::Array(a) => a.iter().filter_map(|v| v.as_u64()).map(|v| v as u32).collect(),
-        v => v.as_u64().map(|v| v as u32).into_iter().collect(),
-    };
-
-    let t = Instant::now();
-    let vb = unsafe { VarBuilder::from_mmaped_safetensors(&weights, dtype, &device)? };
-    let model = models::Model::load(
-        &serde_json::from_value(config)?,
-        vb,
-        args.kv_pages as usize,
-        args.page_size,
-    )?;
-    eprintln!("loaded {} on {:?} in {:.1?}", args.model, device, t.elapsed());
-
-    let engine = Arc::new(runtime::engine::Engine::new(
-        model,
-        tokenizer,
-        eos,
-        args.kv_pages,
-        args.step_tokens,
-    ));
-    let host = Arc::new(runtime::inferlet::Host::new(engine)?);
+    let host = worker::start(&worker::Config {
+        model: args.model.clone(),
+        kv_pages: args.kv_pages,
+        page_size: args.page_size,
+        step_tokens: args.step_tokens,
+        cpu: args.cpu,
+    })?;
     if let Some(addr) = &args.serve {
         return runtime::server::serve(host, addr).await;
     }

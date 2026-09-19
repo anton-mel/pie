@@ -1,61 +1,47 @@
-# Chapter #15: Reference Layout
+# Chapter #16: Engine and Worker
 
-Until chapter 14, the code was laid out for reading one chapter at a time:
-one WIT file, one runtime crate, examples on the side. The real Pie is
-organised differently, to hold far more code.
+Until chapter 15, the runtime called the model directly: the scheduler held
+a candle `Model` and ran `Model::forward`, and `src/main.rs` found the
+checkpoint, loaded the weights and wired everything together. The runtime
+knew exactly which model it had, and on which device.
 
-In chapter 15 nothing new is added. The same code is moved into the layout of
-[pie-project/pie](https://github.com/pie-project/pie), with the same names,
-so that after this tutorial the real repository is familiar. Every example
-gives exactly the same output as in chapter 14.
+In chapter 16 two crates separate those concerns, as in the reference.
+
+`crates/engine` is the contract between the runtime and whatever runs the
+model: a `Seq` (one sequence's share of a step) and a trait `Engine` with
+two methods, `page_size` and `forward`, which returns one row of logits per
+requested output. The runtime now depends on this crate only. The scheduler
+holds a `Box<dyn Engine>`, and `models` implements the trait for the Qwen
+model. A second backend would be a second implementation, with no change to
+the runtime.
+
+`crates/worker` is the role that owns the GPU. `worker::start(config)`
+finds the model's files (`weights.rs`), loads the model, opens it as an
+engine, and builds the runtime on top. `src/main.rs` only parses arguments,
+asks the worker for a running host, and runs or serves inferlets.
 
 ```
-Cargo.toml                 the `pie` binary and the workspace
-src/main.rs                the command line: load the model, run or serve
-crates/
-  inferlet/                the SDK every inferlet links against
-    wit/                   the WIT contract, one interface per file
-  runtime/                 the runtime library
-    src/engine.rs          KV page pool, prefix index, forward queue
-    src/scheduler.rs       what goes into each model step
-    src/planner.rs         who gets pages when they run out
-    src/server.rs          `pie --serve`
-    src/inferlet.rs        runs inferlets: wasm host, state, sessions
-    src/inferlet/host/     the host side of each WIT interface
-  models/                  the model: Qwen2/Qwen3 with a paged KV cache
-  client/                  `pie-client`
-tests/inferlets/           the example inferlets
+src/main.rs ──▶ worker ──▶ models (impl Engine)
+                  │
+                  └──▶ runtime ──▶ engine (the trait)
 ```
 
-## What the Reference Adds
+Nothing changes for inferlets, and every example gives the same output as
+in chapter 15, at the same speed.
 
-These are the parts this tutorial left out, and where they are:
+## Read Order
 
-- **Its own GPU kernels and engines** for CUDA, Metal, Vulkan and WebGPU
-  (`crates/kernels-*`, `crates/engine-*`), which read KV pages where they
-  are. Here, candle does the math.
-- **A model compiler** (`crates/model-ir`, `model-dsl`, `model-compiler`,
-  `models`, `checkpoint`): many model families described once and compiled
-  per backend. Here, one hand-written Qwen.
-- **Sampling on the GPU** (`crates/eta-*`): the inferlet's sampling code is
-  compiled to run next to the logits, so every token can be picked without
-  sending logits back.
-- **Many machines**: a gateway takes requests, a controller places them,
-  workers own GPUs (`crates/gateway`, `controller`, `worker`, `transport`).
-  Here, one process.
-- **More interfaces**: grammars, tools and reasoning, images, audio, video,
-  and recurrent, hybrid and diffusion models (`crates/inferlet/wit`).
-- **Python and JavaScript inferlet SDKs** (`sdk/`).
+Read `crates/engine/src/lib.rs`, then `impl engine::Engine for Model` at
+the end of `crates/models/src/qwen.rs`. Then `crates/worker/src/lib.rs` and
+`weights.rs`. Finally `Engine::new` in `crates/runtime/src/engine.rs`,
+`scheduler::run`, and the shorter `src/main.rs`.
 
 ## Run MacOS
 
 ```bash
 rustup target add wasm32-wasip2
 cargo build --release -p pie --features metal
-cargo build --release -p client
-cargo build --release -p text-completion -p chat-session --target wasm32-wasip2
+cargo build --release -p text-completion --target wasm32-wasip2
 
 ./target/release/pie target/wasm32-wasip2/release/text_completion.wasm -- "The capital of France is" 24
-./target/release/pie --serve 127.0.0.1:9123
-./target/release/pie-client target/wasm32-wasip2/release/chat_session.wasm
 ```

@@ -987,6 +987,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "engine"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+]
+
+[[package]]
 name = "enum-as-inner"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2186,6 +2193,7 @@ dependencies = [
  "anyhow",
  "candle-core",
  "candle-nn",
+ "engine",
  "serde",
 ]
 
@@ -2552,15 +2560,10 @@ name = "pie"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "candle-core",
- "candle-nn",
  "clap",
- "hf-hub",
- "models",
  "runtime",
- "serde_json",
- "tokenizers 0.23.2",
  "tokio",
+ "worker",
 ]
 
 [[package]]
@@ -2947,7 +2950,7 @@ name = "runtime"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "models",
+ "engine",
  "serde",
  "serde_json",
  "tokenizers 0.23.2",
@@ -4876,6 +4879,21 @@ dependencies = [
  "log",
  "thiserror 1.0.69",
  "wast 35.0.2",
+]
+
+[[package]]
+name = "worker"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "candle-core",
+ "candle-nn",
+ "engine",
+ "hf-hub",
+ "models",
+ "runtime",
+ "serde_json",
+ "tokenizers 0.23.2",
 ]
 
 [[package]]

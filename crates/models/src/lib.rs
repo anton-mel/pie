@@ -2,4 +2,4 @@
 
 mod qwen;
 
-pub use qwen::{Config, Model, Seq};
+pub use qwen::{Config, Model};

@@ -2,8 +2,8 @@
 //! the scheduler (`scheduler.rs`) turns into model steps.
 
 use crate::planner::Planner;
+use ::engine::Seq;
 use anyhow::Result;
-use models::{Model, Seq};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokenizers::Tokenizer;
@@ -78,9 +78,16 @@ impl Pool {
 }
 
 impl Engine {
-    /// Takes the scheduler's token budget per step.
-    pub fn new(model: Model, tokenizer: Tokenizer, eos: Vec<u32>, pages: u32, step_tokens: usize) -> Self {
-        let page_size = model.page_size as u32;
+    /// UPDATED
+    /// Takes the backend as an `::engine::Engine`, not a model.
+    pub fn new(
+        model: Box<dyn ::engine::Engine>,
+        tokenizer: Tokenizer,
+        eos: Vec<u32>,
+        pages: u32,
+        step_tokens: usize,
+    ) -> Self {
+        let page_size = model.page_size() as u32;
         let (queue, rx) = mpsc::unbounded_channel();
         std::thread::spawn(move || crate::scheduler::run(model, rx, step_tokens));
         let planner = Planner::new();
