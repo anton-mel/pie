@@ -23,3 +23,7 @@ feature, and explains in its README.
 5. **Planner** ([`feat/planner`](../../tree/feat/planner)): when KV pages run
    out, inferlets wait instead of failing. If all of them wait, the planner
    evicts the youngest, like the OS OOM killer, and restarts it later.
+6. **Speculative decoding** ([`feat/spec-decoding`](../../tree/feat/spec-decoding)):
+   `forward` returns a distribution after any chosen tokens, not just the
+   last. An inferlet checks several guessed tokens in one forward and rolls
+   back the wrong ones.
