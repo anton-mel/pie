@@ -54,7 +54,6 @@ impl Context {
         }
     }
 
-    /// NEW
     /// A context holding `text`, computed once for all inferlets: the first
     /// to ask runs it and publishes its KV under `text`, later ones open that
     /// and skip the work. Add more tokens and forward as usual.
@@ -69,7 +68,7 @@ impl Context {
         }
         // Prefill without asking for any output: only the KV is needed.
         ctx.pending = tokens;
-        ctx.submit_rows(&[], 1)?.wait()?;
+        ctx.submit_rows(&[], None, 1)?.wait()?;
         ctx.kv.update_index(text);
         Ok(ctx)
     }
@@ -91,7 +90,7 @@ impl Context {
     /// row `i` predicts the token that follows pending token `i`.
     pub fn forward_all(&mut self, top_k: u32) -> Result<Vec<Distribution>, String> {
         let outputs: Vec<u32> = (0..self.pending.len() as u32).collect();
-        self.submit_rows(&outputs, top_k)?.wait()
+        self.submit_rows(&outputs, None, top_k)?.wait()
     }
 
     /// Forget the last `n` tokens, as if they had never been forwarded.
@@ -121,12 +120,25 @@ impl Context {
 
     pub fn submit(&mut self, top_k: u32) -> Result<Pending, String> {
         let last = self.pending.len().saturating_sub(1) as u32;
-        Ok(Pending(self.submit_rows(&[last], top_k)?))
+        Ok(Pending(self.submit_rows(&[last], None, top_k)?))
     }
 
+    /// NEW
+    /// Like `forward`, but the next token can only be one of `allowed`.
+    pub fn forward_allowed(&mut self, allowed: &[u32], top_k: u32) -> Result<Distribution, String> {
+        let last = self.pending.len().saturating_sub(1) as u32;
+        Ok(self.submit_rows(&[last], Some(allowed), top_k)?.wait()?.remove(0))
+    }
+
+    /// UPDATED
     /// Submit the pending tokens, asking for a distribution after each
     /// token listed in `outputs` (indices into the pending tokens).
-    pub fn submit_rows(&mut self, outputs: &[u32], top_k: u32) -> Result<PendingForward, String> {
+    pub fn submit_rows(
+        &mut self,
+        outputs: &[u32],
+        allowed: Option<&[u32]>,
+        top_k: u32,
+    ) -> Result<PendingForward, String> {
         if self.pending.is_empty() {
             return Err("nothing to forward".into());
         }
@@ -143,7 +155,7 @@ impl Context {
         let positions: Vec<u32> = (self.pos..self.pos + self.pending.len() as u32).collect();
         self.pos += self.pending.len() as u32;
 
-        let pending = model::forward(&self.kv, len, &self.pending, &positions, outputs, top_k)?;
+        let pending = model::forward(&self.kv, len, &self.pending, &positions, outputs, allowed, top_k)?;
         self.tokens.append(&mut self.pending);
 
         Ok(pending)

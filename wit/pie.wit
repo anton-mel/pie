@@ -15,16 +15,13 @@ interface model {
         /// pages move down to fill the gap. The tokens in them are gone:
         /// later forwards do not attend to them.
         discard: func(start: u32, len: u32) -> result<_, string>;
-        /// NEW
         /// Publish this working set's pages under `key`, so that any
         /// inferlet can open them. Replaces what was published there.
         update-index: func(key: string);
-        /// NEW
         /// A working set sharing the pages published under `key`, as if it
         /// were forked from them. None if nothing is there: the index is a
         /// cache, and the runtime drops old entries when memory runs low.
         from-index: static func(key: string) -> option<kv-working-set>;
-        /// NEW
         /// Unpublish `key`. Working sets opened from it keep their pages.
         remove-index: static func(key: string) -> bool;
     }
@@ -39,21 +36,27 @@ interface model {
     }
 
     resource pending-forward {
-        /// Updated to list<distribution>
+        /// One distribution per entry of `outputs`.
         wait: func() -> result<list<distribution>, string>;
     }
 
+    /// UPDATED
     /// Submit a forward and return at once.
     ///
     /// `outputs` picks which of `tokens` to return a next-token distribution
     /// for, by index: `[len - 1]` for plain decoding, every index to check a
     /// guess for each token at once, none for a prefill.
+    ///
+    /// `allowed`, if given, restricts every returned distribution to
+    /// those token ids, renormalized. The inferlet decides what is allowed
+    /// at each step, which is how it enforces a format or a grammar.
     forward: func(
         kv: borrow<kv-working-set>,
         kv-len: u32,
         tokens: list<u32>,
         positions: list<u32>,
-        outputs: list<u32>, /// NEW
+        outputs: list<u32>,
+        allowed: option<list<u32>>,
         top-k: u32,
     ) -> result<pending-forward, string>;
 }

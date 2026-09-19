@@ -1,43 +1,42 @@
-# Chapter #9: Prefix Cache
+# Chapter #10: Constrained Decoding
 
-Until chapter 8, working sets could share pages only through `fork`, inside
-one inferlet. Two inferlets that start with the same text, like the same
-long system prompt, each computed it from scratch.
+Until chapter 9, the model could produce any token. Often the answer must
+follow a format: one of a few labels, a number, valid JSON. Asking nicely in
+the prompt is not enough, especially with a small model.
 
-In chapter 9 a working set can be published under a key (`update-index` in
-`wit/pie.wit`), and any inferlet can open it later (`from-index`). Opening
-works like a fork: the pages are shared and copied only when written. The
-engine keeps the published pages in an index (`Index` in
-`runtime/src/engine.rs`). The index is a cache: when an allocation would
-have to wait, the engine first drops the entry used longest ago, so
-published pages never starve running inferlets (chapter 5).
+In chapter 10 `forward` takes an optional `allowed` list of token ids
+(`wit/pie.wit`). The engine then picks only among those, with their
+probabilities renormalized (`top_k` in `runtime/src/engine.rs`). Which
+tokens are allowed is the inferlet's decision, made again at every step.
 
-`Context::cached(text)` wraps this: the first inferlet to ask runs `text`
-and publishes it, and later ones open it and skip the work. In
-`examples/prefix-cache` every request starts with the same 290-token system
-prompt. Run one after another, the first computes it (390ms) and the others
-reuse it (195ms each), with exactly the same answers.
+`examples/constrained-choice` makes the answer one of a list of choices. At
+each step it allows only the tokens that can still lead to one of them. Asked
+whether a review about cold food is positive, negative or neutral, greedy
+decoding rambles ("The review is neutral. The review says..."), while the
+constrained run answers exactly " negative", and shows how sure it was
+(0.62, against 0.29 and 0.08).
 
 > [!NOTE]
-> Only inferlets that start after the prefix is published reuse it.
-> Inferlets that start together all miss and each compute it. That is why
-> `pie` has a new `--sequential` flag for this example.
+> A grammar works the same way, with a richer rule for what may come next:
+> a JSON parser, for example, allows only tokens that keep the output valid
+> JSON. The current Pie has a grammar interface that builds these masks
+> for the inferlet, and applies them on the GPU.
 
 ## Read Order
 
-Read `update-index` and `from-index` in `wit/pie.wit` and in
-`runtime/src/host.rs`. Then `Index`, `publish`, `open` and `evict_oldest` in
-`runtime/src/engine.rs`, and where `alloc_wait` calls `evict_oldest`.
-Finally `Context::cached` in `inferlet/src/lib.rs` and
-`examples/prefix-cache`.
+Read `allowed` in `forward` in `wit/pie.wit`. Then `top_k` and where
+`batch_loop` passes `allowed` to it, in `runtime/src/engine.rs`. In
+`inferlet/src/lib.rs`, read `forward_allowed`. Finally
+`examples/constrained-choice`.
 
 ## Run MacOS
 
 ```bash
 rustup target add wasm32-wasip2
 cargo build --release -p pie --features metal
-cargo build --release -p prefix-cache --target wasm32-wasip2
+cargo build --release -p constrained-choice --target wasm32-wasip2
 
-# 4 requests one after another: the first computes the system prompt, the rest reuse it
-./target/release/pie -i 4 --sequential target/wasm32-wasip2/release/prefix_cache.wasm -- "How long can I keep a DVD?" 24
+./target/release/pie target/wasm32-wasip2/release/constrained_choice.wasm
+./target/release/pie target/wasm32-wasip2/release/constrained_choice.wasm -- \
+  "The Golden Gate Bridge is in the city of" "New York|Los Angeles|San Francisco|San Diego"
 ```

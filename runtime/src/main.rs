@@ -31,7 +31,6 @@ struct Args {
     page_size: usize,
     #[arg(long)]
     cpu: bool,
-    /// NEW
     /// Run the instances one after another instead of all at once.
     #[arg(short, long)]
     sequential: bool,

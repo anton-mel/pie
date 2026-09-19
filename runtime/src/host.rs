@@ -94,14 +94,12 @@ impl model::HostKvWorkingSet for State {
         Ok(())
     }
 
-    /// NEW
     async fn update_index(&mut self, ws: Resource<KvWorkingSet>, key: String) {
         if let Ok(ws) = self.table.get(&ws) {
             self.engine.publish(key, &ws.pages);
         }
     }
 
-    /// NEW
     async fn from_index(&mut self, key: String) -> Option<Resource<KvWorkingSet>> {
         let pages = self.engine.open(&key)?;
         let ws = KvWorkingSet {
@@ -111,7 +109,6 @@ impl model::HostKvWorkingSet for State {
         Some(self.table.push(ws).expect("resource table full"))
     }
 
-    /// NEW
     async fn remove_index(&mut self, key: String) -> bool {
         self.engine.unpublish(&key)
     }
@@ -168,6 +165,7 @@ impl model::Host for State {
         self.engine.eos.clone()
     }
 
+    /// UPDATED
     async fn forward(
         &mut self,
         kv: Resource<KvWorkingSet>,
@@ -175,6 +173,7 @@ impl model::Host for State {
         tokens: Vec<u32>,
         positions: Vec<u32>,
         outputs: Vec<u32>,
+        allowed: Option<Vec<u32>>,
         top_k: u32,
     ) -> Result<Resource<PendingForward>, String> {
         let ws = self.table.get_mut(&kv).map_err(|e| e.to_string())?;
@@ -218,7 +217,7 @@ impl model::Host for State {
             kv_len: kv_len as usize,
         };
 
-        let (request, reply) = self.engine.request(seq, top_k as usize);
+        let (request, reply) = self.engine.request(seq, top_k as usize, allowed);
 
         self.unsent.push(request);
 

@@ -19,6 +19,9 @@ pub type Reply = oneshot::Receiver<Result<Vec<Distribution>, String>>;
 pub struct Request {
     seq: Seq,
     top_k: usize,
+    /// NEW
+    /// Token ids the distributions are restricted to, if any.
+    allowed: Option<Vec<u32>>,
     reply: oneshot::Sender<Result<Vec<Distribution>, String>>,
     hold: Hold,
 }
@@ -41,12 +44,10 @@ pub struct Engine {
     pool: Arc<Mutex<Pool>>,
     queue: mpsc::UnboundedSender<Vec<Request>>,
     pub planner: Planner,
-    /// NEW
     /// Published working sets, by key.
     index: Mutex<Index>,
 }
 
-/// NEW
 /// Pages published under a key, and when each key was last used. The index
 /// holds one reference to every page in it, so they outlive the working set
 /// that published them. It is a cache: under memory pressure the entry used
@@ -104,7 +105,6 @@ impl Engine {
         Some(pages)
     }
 
-    /// UPDATED
     /// Drops cached prefixes before it waits on other inferlets.
     pub async fn alloc_wait(&self, id: u64, n: u32) -> Result<Vec<u32>, String> {
         loop {
@@ -125,7 +125,6 @@ impl Engine {
         }
     }
 
-    /// NEW
     /// Publish `pages` under `key`, replacing what was there.
     pub fn publish(&self, key: String, pages: &[u32]) {
         self.share(pages);
@@ -137,7 +136,6 @@ impl Engine {
         }
     }
 
-    /// NEW
     /// The pages published under `key`, with one more holder each.
     pub fn open(&self, key: &str) -> Option<Vec<u32>> {
         let mut index = self.index.lock().unwrap();
@@ -149,13 +147,11 @@ impl Engine {
         Some(pages.clone())
     }
 
-    /// NEW
     pub fn unpublish(&self, key: &str) -> bool {
         let old = self.index.lock().unwrap().entries.remove(key);
         old.map(|(pages, _)| self.free(pages)).is_some()
     }
 
-    /// NEW
     /// Drop the entry used longest ago. False if the index is empty.
     fn evict_oldest(&self) -> bool {
         let mut index = self.index.lock().unwrap();
@@ -186,7 +182,9 @@ impl Engine {
         self.pool.lock().unwrap().free(pages);
     }
 
-    pub fn request(&self, seq: Seq, top_k: usize) -> (Request, Reply) {
+    /// UPDATED
+    /// Takes the `allowed` restriction along with the request.
+    pub fn request(&self, seq: Seq, top_k: usize, allowed: Option<Vec<u32>>) -> (Request, Reply) {
         self.share(&seq.pages);
         let mut pages = seq.pages.clone();
         pages.extend(seq.copies.iter().map(|&(from, _)| from));
@@ -199,6 +197,7 @@ impl Engine {
             Request {
                 seq,
                 top_k,
+                allowed,
                 reply,
                 hold,
             },
@@ -221,7 +220,7 @@ fn batch_loop(mut model: Model, mut rx: mpsc::UnboundedReceiver<Vec<Request>>) {
         let mut holds = vec![];
 
         for r in batch {
-            rest.push((r.seq.outputs.len(), r.top_k, r.reply));
+            rest.push((r.seq.outputs.len(), r.top_k, r.allowed, r.reply));
             seqs.push(r.seq);
             holds.push(r.hold);
         }
@@ -230,13 +229,17 @@ fn batch_loop(mut model: Model, mut rx: mpsc::UnboundedReceiver<Vec<Request>>) {
             Ok(logits) => {
                 // Hand each request its own rows, in order.
                 let mut rows = logits.into_iter();
-                for (n, k, reply) in rest {
-                    let dists = rows.by_ref().take(n).map(|row| top_k(row, k)).collect();
+                for (n, k, allowed, reply) in rest {
+                    let dists = rows
+                        .by_ref()
+                        .take(n)
+                        .map(|row| top_k(row, k, allowed.as_deref()))
+                        .collect();
                     let _ = reply.send(Ok(dists));
                 }
             }
             Err(e) => {
-                for (_, _, reply) in rest {
+                for (_, _, _, reply) in rest {
                     let _ = reply.send(Err(e.to_string()));
                 }
             }
@@ -247,10 +250,25 @@ fn batch_loop(mut model: Model, mut rx: mpsc::UnboundedReceiver<Vec<Request>>) {
     }
 }
 
-fn top_k(logits: Vec<f32>, k: usize) -> Distribution {
-    let max = logits.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-    let sum: f32 = logits.iter().map(|l| (l - max).exp()).sum();
-    let mut idx: Vec<u32> = (0..logits.len() as u32).collect();
+/// UPDATED
+/// The `k` most likely tokens, only among `allowed` if given; probabilities
+/// are normalized over the tokens that could be picked.
+fn top_k(logits: Vec<f32>, k: usize, allowed: Option<&[u32]>) -> Distribution {
+    let mut idx: Vec<u32> = match allowed {
+        Some(ids) => ids.iter().copied().filter(|&i| (i as usize) < logits.len()).collect(),
+        None => (0..logits.len() as u32).collect(),
+    };
+    if idx.is_empty() {
+        return Distribution {
+            ids: vec![],
+            probs: vec![],
+        };
+    }
+    let max = idx
+        .iter()
+        .map(|&i| logits[i as usize])
+        .fold(f32::NEG_INFINITY, f32::max);
+    let sum: f32 = idx.iter().map(|&i| (logits[i as usize] - max).exp()).sum();
     let k = k.clamp(1, idx.len());
     let by_logit = |a: &u32, b: &u32| logits[*b as usize].total_cmp(&logits[*a as usize]);
     idx.select_nth_unstable_by(k - 1, by_logit);
