@@ -95,3 +95,6 @@ feature, and explains in its README.
 26. **Sampling on the GPU** ([`feat/gpu-sampling`](../../tree/feat/gpu-sampling)):
     an inferlet attaches a sampler to a forward, and a kernel of our own
     picks the token next to the logits, from the whole vocabulary.
+27. **Many workers** ([`feat/workers`](../../tree/feat/workers)): workers
+    are separate processes that register with a gateway, which keeps the
+    registry and routes sessions to the least busy worker.
