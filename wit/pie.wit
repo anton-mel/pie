@@ -24,13 +24,22 @@ interface model {
         probs: list<f32>,
     }
 
+    /// A forward that has been submitted and not yet waited for.
+    resource pending-forward {
+        /// Block until the model has run it.
+        wait: func() -> result<distribution, string>;
+    }
+
+    /// Submit a forward and return at once. Submitted forwards are handed to
+    /// the engine together when the inferlet next waits, so an inferlet can
+    /// submit one per sequence and have all of them run in the same step.
     forward: func(
         kv: borrow<kv-working-set>,
         kv-len: u32,
         tokens: list<u32>,
         positions: list<u32>,
         top-k: u32,
-    ) -> result<distribution, string>;
+    ) -> result<pending-forward, string>;
 }
 
 interface run {

@@ -5,7 +5,8 @@
 //! The prompt is run once. Every step each beam proposes its `width` most
 //! likely next tokens, the best `width` of all proposals survive, and each
 //! survivor is a `fork` of its parent: the prompt's KV pages are shared by
-//! every beam and never copied.
+//! every beam and never copied. All beams are submitted before any is
+//! waited for, so each step is one batched model step, not `width` of them.
 
 use inferlet::{Context, model};
 
@@ -37,13 +38,18 @@ impl inferlet::Guest for App {
         for _ in 0..max_tokens {
             // Every beam's proposals is a tuple:
             // (parent, next token or None if done, score).
+            // Submit every live beam first, then wait: they run in one step.
+            let mut submitted = vec![];
+            for b in beams.iter_mut() {
+                submitted.push(if b.done { None } else { Some(b.ctx.submit(width)?) });
+            }
             let mut proposals = vec![];
-            for (i, b) in beams.iter_mut().enumerate() {
-                if b.done {
+            for (i, (b, pending)) in beams.iter().zip(submitted).enumerate() {
+                let Some(pending) = pending else {
                     proposals.push((i, None, b.logp));
                     continue;
-                }
-                let d = b.ctx.forward(width)?;
+                };
+                let d = pending.wait()?;
                 for (t, p) in d.ids.iter().zip(&d.probs) {
                     proposals.push((i, Some(*t), b.logp + p.ln()));
                 }

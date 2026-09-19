@@ -3,7 +3,7 @@
 
 use crate::model::{Model, Seq};
 use anyhow::Result;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tokenizers::Tokenizer;
 use tokio::sync::{mpsc, oneshot};
 
@@ -12,18 +12,36 @@ pub struct Distribution {
     pub probs: Vec<f32>,
 }
 
-struct Request {
+pub type Reply = oneshot::Receiver<Result<Distribution, String>>;
+
+/// A forward on its way to the model.
+pub struct Request {
     seq: Seq,
     top_k: usize,
     reply: oneshot::Sender<Result<Distribution, String>>,
+    hold: Hold,
+}
+
+/// Pages a queued forward reads or writes. Holding them keeps them from
+/// being freed and handed to someone else before the model has run it, even
+/// if the inferlet drops its working set in the meantime.
+struct Hold {
+    pool: Arc<Mutex<Pool>>,
+    pages: Vec<u32>,
+}
+
+impl Drop for Hold {
+    fn drop(&mut self) {
+        self.pool.lock().unwrap().free(self.pages.drain(..));
+    }
 }
 
 pub struct Engine {
     pub tokenizer: Tokenizer,
     pub eos: Vec<u32>,
     pub page_size: u32,
-    pool: Mutex<Pool>,
-    queue: mpsc::UnboundedSender<Request>,
+    pool: Arc<Mutex<Pool>>,
+    queue: mpsc::UnboundedSender<Vec<Request>>,
 }
 
 /// Physical KV pages. A page can be held by several working sets after a
@@ -31,6 +49,18 @@ pub struct Engine {
 struct Pool {
     free: Vec<u32>,
     refs: Vec<u32>,
+}
+
+impl Pool {
+    /// One less holder for each page; pages nobody holds go back to the pool.
+    fn free(&mut self, pages: impl IntoIterator<Item = u32>) {
+        for p in pages {
+            self.refs[p as usize] -= 1;
+            if self.refs[p as usize] == 0 {
+                self.free.push(p);
+            }
+        }
+    }
 }
 
 impl Engine {
@@ -42,10 +72,10 @@ impl Engine {
             tokenizer,
             eos,
             page_size,
-            pool: Mutex::new(Pool {
+            pool: Arc::new(Mutex::new(Pool {
                 free: (0..pages).rev().collect(),
                 refs: vec![0; pages as usize],
-            }),
+            })),
             queue,
         }
     }
@@ -68,34 +98,52 @@ impl Engine {
         self.pool.lock().unwrap().refs[page as usize] > 1
     }
 
-    /// One less holder for each page; pages nobody holds go back to the pool.
     pub fn free(&self, pages: impl IntoIterator<Item = u32>) {
-        let mut pool = self.pool.lock().unwrap();
-        for p in pages {
-            pool.refs[p as usize] -= 1;
-            if pool.refs[p as usize] == 0 {
-                pool.free.push(p);
-            }
-        }
+        self.pool.lock().unwrap().free(pages);
     }
 
-    pub async fn forward(&self, seq: Seq, top_k: usize) -> Result<Distribution, String> {
+    /// A request for one forward, and where its result will arrive. It holds
+    /// `seq.pages`; for copy sources the caller hands over a hold it has.
+    pub fn request(&self, seq: Seq, top_k: usize) -> (Request, Reply) {
+        self.share(&seq.pages);
+        let mut pages = seq.pages.clone();
+        pages.extend(seq.copies.iter().map(|&(from, _)| from));
+        let hold = Hold {
+            pool: self.pool.clone(),
+            pages,
+        };
         let (reply, rx) = oneshot::channel();
-        self.queue
-            .send(Request { seq, top_k, reply })
-            .map_err(|_| "engine stopped")?;
-        rx.await.map_err(|_| "engine stopped")?
+        (
+            Request {
+                seq,
+                top_k,
+                reply,
+                hold,
+            },
+            rx,
+        )
+    }
+
+    /// Queue requests; they go into the same model step.
+    pub fn send(&self, requests: Vec<Request>) -> Result<(), String> {
+        self.queue.send(requests).map_err(|_| "engine stopped".into())
     }
 }
 
 /// Take whatever is queued, run it as one batch, repeat.
-fn batch_loop(mut model: Model, mut rx: mpsc::UnboundedReceiver<Request>) {
-    while let Some(first) = rx.blocking_recv() {
-        let mut batch = vec![first];
-        while let Ok(r) = rx.try_recv() {
-            batch.push(r);
+fn batch_loop(mut model: Model, mut rx: mpsc::UnboundedReceiver<Vec<Request>>) {
+    while let Some(mut batch) = rx.blocking_recv() {
+        while let Ok(more) = rx.try_recv() {
+            batch.extend(more);
         }
-        let (seqs, rest): (Vec<_>, Vec<_>) = batch.into_iter().map(|r| (r.seq, (r.top_k, r.reply))).unzip();
+        let mut seqs = vec![];
+        let mut rest = vec![];
+        let mut holds = vec![];
+        for r in batch {
+            seqs.push(r.seq);
+            rest.push((r.top_k, r.reply));
+            holds.push(r.hold);
+        }
         match model.forward(&seqs).and_then(|l| Ok(l.to_vec2::<f32>()?)) {
             Ok(logits) => {
                 for (row, (k, reply)) in logits.into_iter().zip(rest) {
@@ -108,6 +156,8 @@ fn batch_loop(mut model: Model, mut rx: mpsc::UnboundedReceiver<Request>) {
                 }
             }
         }
+        // The model is done with these pages.
+        drop(holds);
     }
 }
 

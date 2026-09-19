@@ -18,7 +18,7 @@ wit_bindgen::generate!({
 });
 
 pub use exports::pie::core::run::Guest;
-pub use pie::core::model::{self, Distribution, KvWorkingSet};
+pub use pie::core::model::{self, Distribution, KvWorkingSet, PendingForward};
 
 pub struct Context {
     pub tokens: Vec<u32>,
@@ -60,6 +60,12 @@ impl Context {
 
     // one model step
     pub fn forward(&mut self, top_k: u32) -> Result<Distribution, String> {
+        self.submit(top_k)?.wait()
+    }
+
+    /// Like `forward`, but return as soon as it is submitted. Submit on
+    /// several contexts, then wait on each: they all run in one model step.
+    pub fn submit(&mut self, top_k: u32) -> Result<PendingForward, String> {
         if self.pending.is_empty() {
             return Err("nothing to forward".into());
         }
@@ -75,10 +81,10 @@ impl Context {
 
         let positions: Vec<u32> = (start..len).collect();
 
-        let dist = model::forward(&self.kv, len, &self.pending, &positions, top_k)?;
+        let pending = model::forward(&self.kv, len, &self.pending, &positions, top_k)?;
         self.tokens.append(&mut self.pending);
 
-        Ok(dist)
+        Ok(pending)
     }
 
     // wrapper around forward
