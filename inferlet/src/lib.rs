@@ -1,4 +1,4 @@
-//! The library every inferlet links against. It does two things:
+//! The library every inferlet links against.
 //!
 //! To write an inferlet, implement `Guest::run` and export it:
 //!
