@@ -1,0 +1,5 @@
+interface tokenizer {
+    tokenize: func(text: string) -> list<u32>;
+    detokenize: func(tokens: list<u32>) -> string;
+    eos-tokens: func() -> list<u32>;
+}

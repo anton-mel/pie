@@ -1,0 +1,3 @@
+interface run {
+    run: func(args: list<string>) -> result<string, string>;
+}

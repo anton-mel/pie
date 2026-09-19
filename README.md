@@ -1,54 +1,76 @@
-# Chapter #14: Batched Attention
+# Chapter #15: Reference Layout
 
-Until chapter 13, the linear layers ran every sequence of a step as one
-matrix, but attention looped over the sequences one at a time. Each one
-wrote its K/V, gathered its cache slots, built its causal mask on the CPU,
-and ran its own matmuls and softmax, in every layer. With 8 beams that is
-thousands of small GPU operations per step, and it grows with every
-sequence.
+Until chapter 14, the code was laid out for reading one chapter at a time:
+one WIT file, one runtime crate, examples on the side. The real Pie is
+organised differently, to hold far more code.
 
-In chapter 14 the attention of a step is planned once and reused by every
-layer (`Plan` in `runtime/src/model.rs`):
+In chapter 15 nothing new is added. The same code is moved into the layout of
+[pie-project/pie](https://github.com/pie-project/pie), with the same names,
+so that after this tutorial the real repository is familiar. Every example
+gives exactly the same output as in chapter 14.
 
-- every new token's K/V is written with one `scatter_set` per cache;
-- every copy-on-write page (chapter 3) is copied with one gather and one
-  scatter per cache;
-- sequences with one new token, the common case when many beams, samples or
-  clients decode together, are attended together: their cache slots are
-  gathered once, padded to the longest with a mask over the padding, and
-  run through one batched matmul and one softmax (`attend_decode`);
-- longer ones (prefill, verification) keep their own attention, with masks
-  built once per step instead of once per layer.
+```
+Cargo.toml                 the `pie` binary and the workspace
+src/main.rs                the command line: load the model, run or serve
+crates/
+  inferlet/                the SDK every inferlet links against
+    wit/                   the WIT contract, one interface per file
+  runtime/                 the runtime library
+    src/engine.rs          KV page pool, prefix index, forward queue
+    src/scheduler.rs       what goes into each model step
+    src/planner.rs         who gets pages when they run out
+    src/server.rs          `pie --serve`
+    src/inferlet.rs        runs inferlets: wasm host, state, sessions
+    src/inferlet/host/     the host side of each WIT interface
+  models/                  the model: Qwen2/Qwen3 with a paged KV cache
+  client/                  `pie-client`
+tests/inferlets/           the example inferlets
+```
 
-Results are unchanged, and batched work gets 18-25% faster:
+| before | now |
+|---|---|
+| `wit/pie.wit`, package `pie:core` | `crates/inferlet/wit/*.wit`, package `pie:inferlet`, as in the reference: `model`, `tokenizer`, `working-set`, `forward`, `chat`, `session`, `run` |
+| `runtime/src/main.rs` | `src/main.rs` |
+| `runtime/src/host.rs` | `crates/runtime/src/inferlet.rs`, and one file per interface in `crates/runtime/src/inferlet/host/` |
+| `runtime/src/model.rs` | `crates/models/src/qwen.rs` |
+| `inferlet/`, `client/` | `crates/inferlet/`, `crates/client/` |
+| `examples/` | `tests/inferlets/` |
 
-| | chapter 13 | chapter 14 |
-|---|---|---|
-| beam search, 8 beams, 32 tokens | 752 ms | 617 ms |
-| beam search, 16 beams | 1200 ms | 922 ms |
-| 8 parallel samples | 794 ms | 609 ms |
-| 16 inferlets, 48 tokens each | 2400 ms | 1800 ms |
+With the WIT split, inferlets import from the interface a function belongs
+to: `tokenizer::detokenize` instead of `model::detokenize`.
 
-> [!NOTE]
-> Attention still gathers each sequence's pages into a new tensor before it
-> reads them. The current Pie has its own GPU kernels (`crates/kernels-*`)
-> that read the pages where they are, with no copy and no padding, for
-> CUDA, Metal, Vulkan and WebGPU. What is left of the cost here is mostly
-> the many small operations candle launches, which only such a kernel
-> removes.
+## What the Reference Adds
 
-## Read Order
+The reference is about 500,000 lines. These are the parts this tutorial left
+out, and where they are:
 
-Read `Plan::new` in `runtime/src/model.rs`, then where `Model::forward` uses
-the plan in its layer loop, then `attend_decode` and `attend`.
+- **Its own GPU kernels and engines** for CUDA, Metal, Vulkan and WebGPU
+  (`crates/kernels-*`, `crates/engine-*`), which read KV pages where they
+  are. Here, candle does the math.
+- **A model compiler** (`crates/model-ir`, `model-dsl`, `model-compiler`,
+  `models`, `checkpoint`): many model families described once and compiled
+  per backend. Here, one hand-written Qwen.
+- **Sampling on the GPU** (`crates/eta-*`): the inferlet's sampling code is
+  compiled to run next to the logits, so every token can be picked without
+  sending logits back.
+- **Many machines**: a gateway takes requests, a controller places them,
+  workers own GPUs (`crates/gateway`, `controller`, `worker`, `transport`).
+  Here, one process.
+- **More interfaces**: grammars, tools and reasoning, images, audio, video,
+  and recurrent, hybrid and diffusion models (`crates/inferlet/wit`).
+- **Python and JavaScript inferlet SDKs** (`sdk/`).
+- **Swapping KV to CPU memory**, written in the planner but not yet enabled
+  by any backend.
 
 ## Run MacOS
 
 ```bash
 rustup target add wasm32-wasip2
 cargo build --release -p pie --features metal
-cargo build --release -p beam-search -p parallel-sampling --target wasm32-wasip2
+cargo build --release -p client
+cargo build --release -p text-completion -p chat-session --target wasm32-wasip2
 
-./target/release/pie target/wasm32-wasip2/release/beam_search.wasm -- "Once upon a time" 8 32
-./target/release/pie target/wasm32-wasip2/release/parallel_sampling.wasm -- "Once upon a time" 8 32
+./target/release/pie target/wasm32-wasip2/release/text_completion.wasm -- "The capital of France is" 24
+./target/release/pie --serve 127.0.0.1:9123
+./target/release/pie-client target/wasm32-wasip2/release/chat_session.wasm
 ```

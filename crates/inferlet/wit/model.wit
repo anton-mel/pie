@@ -1,0 +1,3 @@
+interface model {
+    kv-page-size: func() -> u32;
+}

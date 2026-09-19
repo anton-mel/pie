@@ -1,0 +1,8 @@
+/// Messages between the inferlet and whoever started it: a client of
+/// `pie --serve`, or the terminal when run with `pie`.
+interface session {
+    /// Send a message. A reply can be streamed as many small messages.
+    send: func(message: string);
+    /// Wait for the next message. None once the other side is done.
+    receive: func() -> option<string>;
+}

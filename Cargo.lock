@@ -425,6 +425,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
+name = "client"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "serde_json",
+]
+
+[[package]]
 name = "cobs"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2171,6 +2180,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "models"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "candle-core",
+ "candle-nn",
+ "serde",
+]
+
+[[package]]
 name = "monostate"
 version = "0.1.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2537,21 +2556,11 @@ dependencies = [
  "candle-nn",
  "clap",
  "hf-hub",
- "serde",
+ "models",
+ "runtime",
  "serde_json",
  "tokenizers 0.23.2",
  "tokio",
- "wasmtime",
- "wasmtime-wasi",
-]
-
-[[package]]
-name = "pie-client"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "serde_json",
 ]
 
 [[package]]
@@ -2931,6 +2940,20 @@ dependencies = [
  "libc",
  "untrusted",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "runtime"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "models",
+ "serde",
+ "serde_json",
+ "tokenizers 0.23.2",
+ "tokio",
+ "wasmtime",
+ "wasmtime-wasi",
 ]
 
 [[package]]

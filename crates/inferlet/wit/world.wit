@@ -1,0 +1,14 @@
+package pie:inferlet@0.1.0;
+
+// Inferlets (WebAssembly modules) have the following runtime API, one
+// interface per file.
+
+world inferlet {
+    import model;
+    import tokenizer;
+    import working-set;
+    import forward;
+    import chat;
+    import session;
+    export run;
+}

@@ -1,0 +1,32 @@
+interface forward {
+    use working-set.{kv-working-set};
+
+    record distribution {
+        ids: list<u32>,
+        probs: list<f32>,
+    }
+
+    resource pending-forward {
+        /// One distribution per entry of `outputs`.
+        wait: func() -> result<list<distribution>, string>;
+    }
+
+    /// Submit a forward and return at once.
+    ///
+    /// `outputs` picks which of `tokens` to return a next-token distribution
+    /// for, by index: `[len - 1]` for plain decoding, every index to check a
+    /// guess for each token at once, none for a prefill.
+    ///
+    /// `allowed`, if given, restricts every returned distribution to
+    /// those token ids, renormalized. The inferlet decides what is allowed
+    /// at each step, which is how it enforces a format or a grammar.
+    forward: func(
+        kv: borrow<kv-working-set>,
+        kv-len: u32,
+        tokens: list<u32>,
+        positions: list<u32>,
+        outputs: list<u32>,
+        allowed: option<list<u32>>,
+        top-k: u32,
+    ) -> result<pending-forward, string>;
+}
