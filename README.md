@@ -27,22 +27,9 @@ crates/
 tests/inferlets/           the example inferlets
 ```
 
-| before | now |
-|---|---|
-| `wit/pie.wit`, package `pie:core` | `crates/inferlet/wit/*.wit`, package `pie:inferlet`, as in the reference: `model`, `tokenizer`, `working-set`, `forward`, `chat`, `session`, `run` |
-| `runtime/src/main.rs` | `src/main.rs` |
-| `runtime/src/host.rs` | `crates/runtime/src/inferlet.rs`, and one file per interface in `crates/runtime/src/inferlet/host/` |
-| `runtime/src/model.rs` | `crates/models/src/qwen.rs` |
-| `inferlet/`, `client/` | `crates/inferlet/`, `crates/client/` |
-| `examples/` | `tests/inferlets/` |
-
-With the WIT split, inferlets import from the interface a function belongs
-to: `tokenizer::detokenize` instead of `model::detokenize`.
-
 ## What the Reference Adds
 
-The reference is about 500,000 lines. These are the parts this tutorial left
-out, and where they are:
+These are the parts this tutorial left out, and where they are:
 
 - **Its own GPU kernels and engines** for CUDA, Metal, Vulkan and WebGPU
   (`crates/kernels-*`, `crates/engine-*`), which read KV pages where they
@@ -59,8 +46,6 @@ out, and where they are:
 - **More interfaces**: grammars, tools and reasoning, images, audio, video,
   and recurrent, hybrid and diffusion models (`crates/inferlet/wit`).
 - **Python and JavaScript inferlet SDKs** (`sdk/`).
-- **Swapping KV to CPU memory**, written in the planner but not yet enabled
-  by any backend.
 
 ## Run MacOS
 
