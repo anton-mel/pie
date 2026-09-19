@@ -21,8 +21,6 @@ pub struct Config {
     tie_word_embeddings: bool,
 }
 
-/// One sequence's share of a batched forward. `tokens` are the last
-/// `tokens.len()` entries of a `kv_len`-long sequence stored in `pages`.
 pub struct Seq {
     pub tokens: Vec<u32>,
     pub positions: Vec<u32>,

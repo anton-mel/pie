@@ -4,7 +4,7 @@ package pie:core@0.1.0;
 
 interface model {
 
-    /// Tokens per KV page. The inferlet uses it to size its working sets.
+    /// Tokens per KV page.
     kv-page-size: func() -> u32;
 
     /// A sequence's KV cache: a list of pages the inferlet addresses as
@@ -12,19 +12,14 @@ interface model {
     /// so the inferlet never sees, and cannot misuse, a physical page id.
     /// Dropping the handle returns its pages to the shared pool.
     resource kv-working-set {
-        /// An empty working set.
         constructor();
-        /// How many pages it holds.
         page-len: func() -> u32;
-        /// Grow by `n` pages taken from the shared pool.
+        /// taken from the shared pool.
         reserve: func(n: u32) -> result<_, string>;
     }
 
-    /// Turn text into token ids.
     tokenize: func(text: string) -> list<u32>;
-    /// Turn token ids back into text.
     detokenize: func(tokens: list<u32>) -> string;
-    /// The model's end-of-sequence tokens.
     eos-tokens: func() -> list<u32>;
 
     record distribution {
@@ -32,14 +27,6 @@ interface model {
         probs: list<f32>,
     }
 
-    /// Run new tokens through the model. The runtime queues the call, batches
-    /// it with calls from all other inferlets, and runs one model step.
-    ///
-    /// `kv-len` is the sequence's length after this call; `tokens` are its
-    /// last entries and their K/V are written there. Attention is causal.
-    ///
-    /// Example, 5 tokens already cached, 3 new ones:
-    ///   forward(kv, kv-len: 8, tokens: [a, b, c], positions: [5, 6, 7], top-k: 1)
     forward: func(
         kv: borrow<kv-working-set>,
         kv-len: u32,
@@ -49,9 +36,7 @@ interface model {
     ) -> result<distribution, string>;
 }
 
-/// The inferlet's entry point.
 interface run {
-    /// Args come from the command line after `--`; the inferlet decides what they mean.
     run: func(args: list<string>) -> result<string, string>;
 }
 
