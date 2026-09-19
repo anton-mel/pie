@@ -39,8 +39,6 @@ pub struct PendingForward {
 
 struct State {
     engine: Arc<Engine>,
-    /// NEW
-    /// This inferlet's id with the planner.
     id: u64,
     unsent: Vec<Request>,
     wasi: WasiCtx,
@@ -70,8 +68,6 @@ impl model::HostKvWorkingSet for State {
     }
 
     async fn reserve(&mut self, ws: Resource<KvWorkingSet>, n: u32) -> Result<(), String> {
-        /// NEW
-        /// Reserve waits instead of failing!
         let pages = self.engine.alloc_wait(self.id, n).await?;
         self.table.get_mut(&ws).map_err(|e| e.to_string())?.pages.extend(pages);
         Ok(())
@@ -173,8 +169,6 @@ impl model::Host for State {
             .filter(|&i| self.engine.is_shared(ws.pages[i]))
             .collect();
 
-        /// NEW
-        /// Copy-on-write in forward waits the same way
         let fresh = self.engine.alloc_wait(self.id, shared.len() as u32).await?;
         let copies = shared
             .into_iter()
@@ -219,10 +213,6 @@ impl Host {
         Ok(Component::from_file(&self.wasm, path)?)
     }
 
-    /// NEW
-    ///
-    /// Run an inferlet to the end. If the planner evicts it to free pages,
-    /// start it again from scratch.
     pub async fn run(&self, component: &Component, args: Vec<String>) -> Result<Result<String, String>> {
         loop {
             let (id, kill) = self.engine.planner.join();

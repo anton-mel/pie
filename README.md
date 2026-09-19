@@ -1,4 +1,4 @@
-# Pie Tutorial: Speculative Decoding
+# Chapter #6: Speculative Decoding
 
 Until chapter 5, `forward` returned one distribution: the one after the last
 new token. So an inferlet could only learn one new token per forward, and
@@ -20,10 +20,9 @@ copies the input: copying a paragraph takes 7 forwards instead of 48, and
 is 2.2x faster (129ms instead of 286ms). On free text it helps little.
 
 > [!NOTE]
-> This checks one chain of guesses. The current Pie also lets a forward set
+> This checks one chain of guesses. The latest Pie also lets a forward set
 > its own attention mask, so an inferlet can check a whole tree of guesses
-> in one forward, each branch seeing only its own ancestors. That is not
-> done here.
+> in one forward, each branch seeing only its own ancestors.
 
 ## Read Order
 

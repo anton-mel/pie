@@ -88,10 +88,6 @@ impl Engine {
         Some(pages)
     }
 
-    /// NEW
-    ///
-    /// `alloc` for inferlet id, waiting for pages instead of failing when
-    /// there are not enough. The planner decides when waiting is hopeless.
     pub async fn alloc_wait(&self, id: u64, n: u32) -> Result<Vec<u32>, String> {
         loop {
             // Listen before checking, so a free between the two is not missed.
@@ -146,6 +142,7 @@ impl Engine {
     }
 }
 
+/// UPDATED
 fn batch_loop(mut model: Model, mut rx: mpsc::UnboundedReceiver<Vec<Request>>) {
     while let Some(mut batch) = rx.blocking_recv() {
         while let Ok(more) = rx.try_recv() {

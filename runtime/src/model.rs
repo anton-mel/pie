@@ -22,13 +22,10 @@ pub struct Config {
 }
 
 pub struct Seq {
-    /// NEW
-    ///
-    /// Pages to copy `(from, to)` before anything is written: copy-on-write
-    /// for pages this sequence shares with a fork.
     pub copies: Vec<(u32, u32)>,
     pub tokens: Vec<u32>,
     pub positions: Vec<u32>,
+    /// NEW
     /// Which of `tokens` to return logits for, by index.
     pub outputs: Vec<u32>,
     pub pages: Vec<u32>,
@@ -137,6 +134,8 @@ impl Model {
         })
     }
 
+    /// UPDATED
+    ///
     /// Returns f32 logits, one row per entry of each sequence's `outputs`.
     pub fn forward(&mut self, seqs: &[Seq]) -> Result<Tensor> {
         let (nh, nkv, hd, ps) = (self.heads, self.kv_heads, self.head_dim, self.page_size);
@@ -156,10 +155,6 @@ impl Model {
             off += s.tokens.len();
         }
 
-        /// NEW
-        ///
-        /// Copy-on-write: any page this sequence writes into and a fork still
-        /// holds is copied to a fresh page first, and this sequence moves to it.
         for (from, to) in seqs.iter().flat_map(|s| &s.copies) {
             for l in &mut self.layers {
                 for cache in [&mut l.k_cache, &mut l.v_cache] {
@@ -216,15 +211,18 @@ impl Model {
                 .forward(&(candle_nn::ops::silu(&l.gate.forward(&h)?)? * l.up.forward(&h)?)?)?;
             x = (x + mlp)?;
         }
+
         // Only the requested rows go through the final norm and the head.
         let rows: Vec<u32> = seqs
             .iter()
             .zip(&offsets)
             .flat_map(|(s, &o)| s.outputs.iter().map(move |&i| o as u32 + i))
             .collect();
+        
         if rows.is_empty() {
             return Ok(Tensor::zeros((0, 1), DType::F32, &self.device)?);
         }
+        
         let x = self
             .norm
             .forward(&x.index_select(&Tensor::new(rows, &self.device)?, 0)?)?;

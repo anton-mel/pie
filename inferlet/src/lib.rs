@@ -59,6 +59,7 @@ impl Context {
         self.submit(top_k)?.wait()
     }
 
+    /// UPDATED
     /// Run the pending tokens and return a distribution after each of them:
     /// row `i` predicts the token that follows pending token `i`.
     pub fn forward_all(&mut self, top_k: u32) -> Result<Vec<Distribution>, String> {
@@ -66,6 +67,7 @@ impl Context {
         self.submit_rows(&outputs, top_k)?.wait()
     }
 
+    /// UPDATED
     /// Forget the last `n` tokens, as if they had never been forwarded.
     /// Their KV stays in the pages but is past the end, and the next forward
     /// writes over it.
@@ -73,15 +75,12 @@ impl Context {
         self.tokens.truncate(self.tokens.len().saturating_sub(n));
     }
 
-    /// NEW
-    ///
-    /// Like `forward`, but return as soon as it is submitted. Submit on
-    /// several contexts, then wait on each: they all run in one model step.
     pub fn submit(&mut self, top_k: u32) -> Result<Pending, String> {
         let last = self.pending.len().saturating_sub(1) as u32;
         Ok(Pending(self.submit_rows(&[last], top_k)?))
     }
 
+    /// NEW 
     /// Submit the pending tokens, asking for a distribution after each
     /// token listed in `outputs` (indices into the pending tokens).
     pub fn submit_rows(&mut self, outputs: &[u32], top_k: u32) -> Result<PendingForward, String> {
