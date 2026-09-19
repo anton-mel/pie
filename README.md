@@ -101,3 +101,6 @@ feature, and explains in its README.
 28. **Grammar** ([`feat/grammar`](../../tree/feat/grammar)): a grammar
     engine turns a regex or a JSON schema into the tokens allowed at each
     step, so structured output is always valid.
+29. **Tools and reasoning** ([`feat/tools-reasoning`](../../tree/feat/tools-reasoning)):
+    tools are offered in the model's own format, and decoders spot its
+    thinking and tool calls as tokens come; an agent inferlet runs the tools.
