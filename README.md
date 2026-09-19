@@ -1,10 +1,5 @@
 # Pie Tutorial: async forward
 
-Until chapter 3, `forward` blocked until the model had run it. The engine
-batches calls from different inferlets, but an inferlet with several
-sequences, like the beams in `examples/beam-search`, could only have one
-forward in flight: its beams ran one model step each.
-
 Now `forward` returns a `pending-forward` at once, and `wait()` gets the
 result (`wit/pie.wit`). The host keeps what an inferlet submits and hands it
 to the engine all together when the inferlet next waits, so everything

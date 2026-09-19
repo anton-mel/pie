@@ -14,7 +14,7 @@ pub struct Distribution {
 
 pub type Reply = oneshot::Receiver<Result<Distribution, String>>;
 
-/// A forward on its way to the model.
+/// NEW
 pub struct Request {
     seq: Seq,
     top_k: usize,
@@ -22,9 +22,7 @@ pub struct Request {
     hold: Hold,
 }
 
-/// Pages a queued forward reads or writes. Holding them keeps them from
-/// being freed and handed to someone else before the model has run it, even
-/// if the inferlet drops its working set in the meantime.
+/// NEW
 struct Hold {
     pool: Arc<Mutex<Pool>>,
     pages: Vec<u32>,
@@ -44,15 +42,12 @@ pub struct Engine {
     queue: mpsc::UnboundedSender<Vec<Request>>,
 }
 
-/// Physical KV pages. A page can be held by several working sets after a
-/// fork; `refs` counts them and the page is free again at zero.
 struct Pool {
     free: Vec<u32>,
     refs: Vec<u32>,
 }
 
 impl Pool {
-    /// One less holder for each page; pages nobody holds go back to the pool.
     fn free(&mut self, pages: impl IntoIterator<Item = u32>) {
         for p in pages {
             self.refs[p as usize] -= 1;
@@ -102,6 +97,7 @@ impl Engine {
         self.pool.lock().unwrap().free(pages);
     }
 
+    /// NEW
     /// A request for one forward, and where its result will arrive. It holds
     /// `seq.pages`; for copy sources the caller hands over a hold it has.
     pub fn request(&self, seq: Seq, top_k: usize) -> (Request, Reply) {
@@ -130,6 +126,7 @@ impl Engine {
     }
 }
 
+/// NEW
 /// Take whatever is queued, run it as one batch, repeat.
 fn batch_loop(mut model: Model, mut rx: mpsc::UnboundedReceiver<Vec<Request>>) {
     while let Some(mut batch) = rx.blocking_recv() {
@@ -139,11 +136,13 @@ fn batch_loop(mut model: Model, mut rx: mpsc::UnboundedReceiver<Vec<Request>>) {
         let mut seqs = vec![];
         let mut rest = vec![];
         let mut holds = vec![];
+
         for r in batch {
             seqs.push(r.seq);
             rest.push((r.top_k, r.reply));
             holds.push(r.hold);
         }
+
         match model.forward(&seqs).and_then(|l| Ok(l.to_vec2::<f32>()?)) {
             Ok(logits) => {
                 for (row, (k, reply)) in logits.into_iter().zip(rest) {
@@ -156,6 +155,7 @@ fn batch_loop(mut model: Model, mut rx: mpsc::UnboundedReceiver<Vec<Request>>) {
                 }
             }
         }
+
         // The model is done with these pages.
         drop(holds);
     }

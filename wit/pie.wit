@@ -10,8 +10,6 @@ interface model {
         constructor();
         page-len: func() -> u32;
         reserve: func(n: u32) -> result<_, string>;
-        /// A new working set sharing all of this one's pages. Nothing is
-        /// copied: a shared page is copied only when one side writes to it.
         fork: func() -> kv-working-set;
     }
 
@@ -24,15 +22,15 @@ interface model {
         probs: list<f32>,
     }
 
+    /// NEW
+    ///
     /// A forward that has been submitted and not yet waited for.
     resource pending-forward {
         /// Block until the model has run it.
         wait: func() -> result<distribution, string>;
     }
 
-    /// Submit a forward and return at once. Submitted forwards are handed to
-    /// the engine together when the inferlet next waits, so an inferlet can
-    /// submit one per sequence and have all of them run in the same step.
+    /// Submit a forward and return at once.
     forward: func(
         kv: borrow<kv-working-set>,
         kv-len: u32,

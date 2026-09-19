@@ -37,10 +37,6 @@ impl Context {
         }
     }
 
-    /// NEW
-    ///
-    /// A copy of this context that shares its KV cache. Both can go on
-    /// independently; a shared page is copied only when one of them writes.
     pub fn fork(&self) -> Self {
         Self {
             tokens: self.tokens.clone(),
@@ -63,6 +59,8 @@ impl Context {
         self.submit(top_k)?.wait()
     }
 
+    /// NEW
+    ///
     /// Like `forward`, but return as soon as it is submitted. Submit on
     /// several contexts, then wait on each: they all run in one model step.
     pub fn submit(&mut self, top_k: u32) -> Result<PendingForward, String> {

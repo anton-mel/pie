@@ -33,7 +33,7 @@ impl Drop for KvWorkingSet {
     }
 }
 
-/// The host side of a `pending-forward`: where its result will arrive.
+/// NEW
 pub struct PendingForward {
     reply: Option<Reply>,
 }
@@ -90,6 +90,7 @@ impl model::HostKvWorkingSet for State {
     }
 }
 
+/// NEW
 impl model::HostPendingForward for State {
     async fn wait(&mut self, p: Resource<PendingForward>) -> Result<Distribution, String> {
         // Everything submitted so far goes to the engine together, so it
@@ -143,7 +144,6 @@ impl model::Host for State {
     ) -> Result<Resource<PendingForward>, String> {
         let ws = self.table.get_mut(&kv).map_err(|e| e.to_string())?;
 
-        // Translate logical pages to physical ones for the pages in use.
         let ps = self.engine.page_size;
         let need = kv_len.div_ceil(ps) as usize;
 
@@ -158,10 +158,6 @@ impl model::Host for State {
             return Err("tokens/positions do not fit kv-len".into());
         }
 
-        // Copy-on-write: a page this call writes into and a fork still holds
-        // is copied to a fresh page first, and this working set moves to it.
-        // The working set's hold on the old page passes to the request, which
-        // keeps it until the copy has run.
         let first = (kv_len - tokens.len() as u32) / ps;
         let shared: Vec<usize> = (first as usize..need)
             .filter(|&i| self.engine.is_shared(ws.pages[i]))
@@ -182,7 +178,10 @@ impl model::Host for State {
         };
 
         let (request, reply) = self.engine.request(seq, top_k as usize);
+
+        /// NEW
         self.unsent.push(request);
+
         let pending = PendingForward { reply: Some(reply) };
         Ok(self.table.push(pending).map_err(|e| e.to_string())?)
     }
@@ -210,7 +209,7 @@ impl Host {
     pub async fn run(&self, component: &Component, args: Vec<String>) -> Result<Result<String, String>> {
         let state = State {
             engine: self.engine.clone(),
-            unsent: vec![],
+            unsent: vec![], /// NEW
             wasi: WasiCtx::builder().inherit_stdio().build(),
             table: ResourceTable::new(),
         };
