@@ -72,3 +72,6 @@ feature, and explains in its README.
 19. 🟨 **Sandbox** ([`feat/sandbox`](../../tree/feat/sandbox)): a policy
     decides what inferlets may reach besides the model: one directory, and
     TCP to listed addresses. By default, nothing.
+20. **Prefix trie** ([`feat/prefix-trie`](../../tree/feat/prefix-trie)):
+    every full page is recorded by a chain hash of its prefix, so prompts
+    that start the same share their KV, found by their tokens with no key.
