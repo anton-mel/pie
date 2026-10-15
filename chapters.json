@@ -1,0 +1,345 @@
+{
+  "introduction_commit": "c6ba5bed4b37543a56f939091703092a9e1b2dd3",
+  "chapters": [
+    {
+      "number": 1,
+      "title": "Inferlets",
+      "branch": "feat/inferlet",
+      "commit": "8e81511721b68a98fea0b33042aefd793d246a9e",
+      "slug": "01-inferlet",
+      "aliases": {},
+      "description": "Run inferlets with a Wasm host, a paged KV cache, and a Qwen model.",
+      "recommended": true
+    },
+    {
+      "number": 2,
+      "title": "KV working set",
+      "branch": "feat/kv-working-set",
+      "commit": "5d65939f4d1cd48936008db3ce132cca954a2167",
+      "slug": "02-kv-working-set",
+      "aliases": {},
+      "description": "Give inferlets logical KV pages and automatic resource cleanup.",
+      "recommended": true
+    },
+    {
+      "number": 3,
+      "title": "KV fork",
+      "branch": "feat/kv-fork",
+      "commit": "b227845eebe902ae648e23ae81d0c86cb697e85d",
+      "slug": "03-kv-fork",
+      "aliases": {},
+      "description": "Share KV pages copy-on-write to make branching generation cheap.",
+      "recommended": true
+    },
+    {
+      "number": 4,
+      "title": "Async Forward",
+      "branch": "feat/async-forward",
+      "commit": "cc8969eaebe6d391e1f4d5a04ed0371e960b9fe0",
+      "slug": "04-async-forward",
+      "aliases": {},
+      "description": "Submit multiple sequences before waiting so beams run in one model step.",
+      "recommended": true
+    },
+    {
+      "number": 5,
+      "title": "Planner",
+      "branch": "feat/planner",
+      "commit": "4e1a527f580dbfb7882a3a97e5777b95d994a4dd",
+      "slug": "05-planner",
+      "aliases": {},
+      "description": "Handle memory pressure by waiting, evicting, and restarting inferlets.",
+      "recommended": true
+    },
+    {
+      "number": 6,
+      "title": "Speculative Decoding",
+      "branch": "feat/spec-decoding",
+      "commit": "78c65cddb6852c51da6f96ebfbaae6ca53aa3cbc",
+      "slug": "06-spec-decoding",
+      "aliases": {},
+      "description": "Check several guessed tokens in one forward and roll back mistakes.",
+      "recommended": true
+    },
+    {
+      "number": 7,
+      "title": "Sampling",
+      "branch": "feat/sampling",
+      "commit": "b5702d9fcb4006f35f96a5c7dc5c44b93369a885",
+      "slug": "07-sampling",
+      "aliases": {},
+      "description": "Control temperature, top-p, and min-p inside the inferlet.",
+      "recommended": true
+    },
+    {
+      "number": 8,
+      "title": "KV Discard",
+      "branch": "feat/kv-discard",
+      "commit": "6d955b3e0d8d0f5da2f3f1b31cbe43880abbb47b",
+      "slug": "08-kv-discard",
+      "aliases": {},
+      "description": "Generate beyond the cache capacity with a sliding window of KV pages.",
+      "recommended": true
+    },
+    {
+      "number": 9,
+      "title": "Prefix Cache",
+      "branch": "feat/prefix-cache",
+      "commit": "4bbcb529727ca2d5659de51dc92b4ea3c3960998",
+      "slug": "09-prefix-cache",
+      "aliases": {},
+      "description": "Compute a shared prompt once and reuse its KV pages by key.",
+      "recommended": true
+    },
+    {
+      "number": 10,
+      "title": "Constrained Decoding",
+      "branch": "feat/constrained-decoding",
+      "commit": "77dbfc6d371f77a434fbd33083ee8d7be8090f1d",
+      "slug": "10-constrained-decoding",
+      "aliases": {},
+      "description": "Restrict the next token to keep answers within a set of choices.",
+      "recommended": true
+    },
+    {
+      "number": 11,
+      "title": "Chat",
+      "branch": "feat/chat",
+      "commit": "d724992214bbe86b0de4ec552fe891d2a96830dc",
+      "slug": "11-chat",
+      "aliases": {},
+      "description": "Hold conversations using the model\u2019s chat format.",
+      "recommended": true
+    },
+    {
+      "number": 12,
+      "title": "Server and Client",
+      "branch": "feat/server",
+      "commit": "4c04419d858aac59002e3c1b2cba738875fcce87",
+      "slug": "12-server",
+      "aliases": {},
+      "description": "Run inferlets over the network and stream answers back to clients.",
+      "recommended": false
+    },
+    {
+      "number": 13,
+      "title": "Scheduler",
+      "branch": "feat/scheduler",
+      "commit": "123b4e161bf7a7b0eda6483a1be8c4d84e24c3b9",
+      "slug": "13-scheduler",
+      "aliases": {},
+      "description": "Budget model steps and split long prompts to keep decoding responsive.",
+      "recommended": true
+    },
+    {
+      "number": 14,
+      "title": "Batched Attention",
+      "branch": "feat/attention",
+      "commit": "e2d683ec4722f0462efac1b82f49d65e570ce1f9",
+      "slug": "14-attention",
+      "aliases": {},
+      "description": "Plan attention once per step and attend decoding sequences together.",
+      "recommended": false
+    },
+    {
+      "number": 15,
+      "title": "Reference Layout",
+      "branch": "feat/reference-layout",
+      "commit": "01bd7ec960aeb60bb923bee1caec08338555bfdb",
+      "slug": "15-reference-layout",
+      "aliases": {},
+      "description": "Map the tutorial code onto the reference Pie repository\u2019s layout.",
+      "recommended": false
+    },
+    {
+      "number": 16,
+      "title": "Engine and Worker",
+      "branch": "feat/engine-worker",
+      "commit": "c434eab53d9c214c1da54278e9b732b2963b0796",
+      "slug": "16-engine-worker",
+      "aliases": {},
+      "description": "Separate the runtime from the model through an Engine interface.",
+      "recommended": false
+    },
+    {
+      "number": 17,
+      "title": "Protocol and Programs",
+      "branch": "feat/protocol",
+      "commit": "40c9c78897be3de5cbea5eeb3ee9269ac9e6cd14",
+      "slug": "17-protocol",
+      "aliases": {
+        "Pie.toml": "tests/inferlets/text-completion/Pie.toml"
+      },
+      "description": "Install programs once and launch them through a versioned protocol.",
+      "recommended": false
+    },
+    {
+      "number": 18,
+      "title": "Processes",
+      "branch": "feat/processes",
+      "commit": "6e572d2d2c5b36c29dc5770046d6954941a4bd6c",
+      "slug": "18-processes",
+      "aliases": {},
+      "description": "Give programs persistent process IDs and attachable client sessions.",
+      "recommended": false
+    },
+    {
+      "number": 19,
+      "title": "Sandbox",
+      "branch": "feat/sandbox",
+      "commit": "813df90220a0860c52fc9acb6a8fc29cfc5f2d5d",
+      "slug": "19-sandbox",
+      "aliases": {},
+      "description": "Control inferlet access to directories and network addresses.",
+      "recommended": false
+    },
+    {
+      "number": 20,
+      "title": "Prefix Trie",
+      "branch": "feat/prefix-trie",
+      "commit": "8a5bc12f91b9d94752ac417b04ce315fe569007a",
+      "slug": "20-prefix-trie",
+      "aliases": {},
+      "description": "Find shared prompt prefixes automatically using tokens and chain hashes.",
+      "recommended": true
+    },
+    {
+      "number": 21,
+      "title": "Pipelines",
+      "branch": "feat/pipelines",
+      "commit": "a4035158441e03c54ed84b21853a5a3522d85b36",
+      "slug": "21-pipelines",
+      "aliases": {},
+      "description": "Run ordered work on independent, inferlet-selected pipelines.",
+      "recommended": false
+    },
+    {
+      "number": 22,
+      "title": "Chat Templates",
+      "branch": "feat/chat-template",
+      "commit": "552d5cd2de498a9c152d4ae78103bd20706fcbd8",
+      "slug": "22-chat-template",
+      "aliases": {},
+      "description": "Load chat formats from templates for different model families.",
+      "recommended": false
+    },
+    {
+      "number": 23,
+      "title": "Config, Model Catalog and Metrics",
+      "branch": "feat/config-catalog",
+      "commit": "5822c071debd7ff0dd9e1c29329ecdb4a4b2ebcf",
+      "slug": "23-config-catalog",
+      "aliases": {},
+      "description": "Add configuration, an imported-model catalog, and runtime metrics.",
+      "recommended": false
+    },
+    {
+      "number": 24,
+      "title": "Our Own GPU Kernel",
+      "branch": "feat/metal-kernel",
+      "commit": "b49597645c2e9d96668720df28d4b9fe60c44ab5",
+      "slug": "24-metal-kernel",
+      "aliases": {},
+      "description": "Implement paged decoding attention in a custom Metal kernel.",
+      "recommended": false
+    },
+    {
+      "number": 25,
+      "title": "Model Descriptions",
+      "branch": "feat/model-descriptions",
+      "commit": "574d9cfd37fcbfaf7bd215d9c7b1449bd8f2501f",
+      "slug": "25-model-descriptions",
+      "aliases": {},
+      "description": "Describe model families once and run them through one transformer.",
+      "recommended": false
+    },
+    {
+      "number": 26,
+      "title": "Sampling on the GPU",
+      "branch": "feat/gpu-sampling",
+      "commit": "493f5edc8d9c79a5c96bb4a52a3391b78939624d",
+      "slug": "26-gpu-sampling",
+      "aliases": {},
+      "description": "Choose the next token on the GPU with an inferlet-selected sampler.",
+      "recommended": false
+    },
+    {
+      "number": 27,
+      "title": "Many Workers",
+      "branch": "feat/workers",
+      "commit": "6fc4c67374a886b0d0015c0d4e2c057cc61a36f8",
+      "slug": "27-workers",
+      "aliases": {},
+      "description": "Register worker processes and route sessions through a gateway.",
+      "recommended": false
+    },
+    {
+      "number": 28,
+      "title": "Grammar",
+      "branch": "feat/grammar",
+      "commit": "965e8b147c5465beb9aac231c6cfad2d12a26634",
+      "slug": "28-grammar",
+      "aliases": {},
+      "description": "Turn regexes and JSON schemas into valid token choices.",
+      "recommended": false
+    },
+    {
+      "number": 29,
+      "title": "Tools and Reasoning",
+      "branch": "feat/tools-reasoning",
+      "commit": "09ef7869a0cde8501655670ffb8fb199588a4ec4",
+      "slug": "29-tools-reasoning",
+      "aliases": {},
+      "description": "Decode thinking and tool calls, then run tools from an agent inferlet.",
+      "recommended": false
+    },
+    {
+      "number": 30,
+      "title": "Python SDK",
+      "branch": "feat/python-sdk",
+      "commit": "8430495aeae2a95c4de868514f25607f9600473b",
+      "slug": "30-python-sdk",
+      "aliases": {},
+      "description": "Write Python inferlets and package them as Wasm components.",
+      "recommended": false
+    },
+    {
+      "number": 31,
+      "title": "Inspecting an Inferlet",
+      "slug": "31-inspecting-an-inferlet",
+      "branch": "pie-project/pie beam-search examples",
+      "commit": "b64b7fa5b4f88c07a918fbf1ac0a060e662992fc",
+      "repository": "https://github.com/pie-project/pie",
+      "template": "templates/inspecting-an-inferlet.md",
+      "source_dir": "sources/inspecting-an-inferlet",
+      "source_hashes": {
+        "examples/beam-search/src/lib.rs": "dade051828109c04363f7861cad8471425972c711e180416c25c353f9134757a",
+        "examples/beam-search/Cargo.toml": "d96f7642dc9d3adc1d652452a2edbd097ba1931888c098e6b3aa8299b70beb8b",
+        "examples/beam-search/README.md": "f5dee58d3d08a519bc0f02e135960fa20cf7c4ad87a692a123ac367f424df6d8",
+        "examples/beam-search-py/main.py": "7263d40dba27bef584cd938b198ac2415247b45b64e0a5f18d1a8d8daea72974",
+        "examples/beam-search-js/index.js": "20576a1133960a73e641331587bd83948dd475c22727296d51f325ba576d23f6",
+        "examples/beam-search-js/package.json": "bd4f2012e2a76685f380a9aa2f3dc07624b275fb68e19867d62590277efe5c62",
+        "packages/python/inferlet/README.md": "c321f83e02b3bd1d367e3e7220ea5cc61f0e684b11e250a78a936923da332abb",
+        "packages/javascript/inferlet/README.md": "9806699110fec607b80d0d2cab1bfddb399642780e4101b9399ee2cd8c8f0b0a",
+        "LICENSE": "bf78432e565a8fc995c8d3300c452ab515b04bf129b430e95915e5fadd51035c",
+        "crates/inferlet/src/eta.rs": "1907e3ea4ae5dca6ece8f2b84270838d300844d51443d1db415088372d77ba7b",
+        "crates/inferlet-macros/src/lib.rs": "fe279c65cf3f1bf387ac350cd99bf2830578c38ed75aed38df93fc05a2954b27",
+        "crates/inferlet/wit/channel.wit": "408f9fe742ebcc3805d4f430b0e6522aca89b1bd95f468afd99ef4776519578e",
+        "crates/inferlet/wit/working-set.wit": "1d98dd6d0c423095d9033562e4737f6e991f5300e49d332056243b1ff6f38850",
+        "packages/python/inferlet/src/inferlet/eta/bridge.py": "636c8cf5bd9ae0015996f20ee6eff46df05f00dec3581d2bea7460f30684095a",
+        "packages/javascript/inferlet/src/eta/bridge.ts": "402c006292690a922e42398ae990c42e6e2df35f5627e9da642fe61b5510d00c",
+        "crates/eta-dsl/src/value.rs": "94a2eb0ad152a39414dd20aaa569ba1f8d824b4b3f987d6fa6764703257088a2",
+        "src/ops/run.rs": "5f05741b287d1c5d898a7502da81c2d2d627023ad2380e748d434d8cd8dd6ea6",
+        "examples/Cargo.toml": "5f562dd2ca2dad4a33c79dc2c25ef320ac53c76b2c29c37f1322bdcf6a46215f",
+        "tests/examples/test_curated.py": "f94eb7365e42010679d30cf322f6a0ff1d7b4e004cdd1a655c39e5c0256bb0cc",
+        "tests/examples/test_twins.py": "3f12dce307ea565e726d127c6c6e5a786eb9db91aa3f41b6731d1d6af5f4f346",
+        "tests/examples/conftest.py": "6685eed6b0842218e8defd877d304e0213cc3944f5d23cd5b0c6b367ee3e466f",
+        "tests/examples/run_all.py": "bf116992d3b4b968956f2ffce73526cd671366bb6c1c1919134605a514ae4ad3"
+      },
+      "comparisons": "templates/inspecting-an-inferlet.json",
+      "aliases": {},
+      "description": "Dissect beam search from entry point to output in Rust, Python, and JavaScript.",
+      "recommended": false
+    }
+  ]
+}

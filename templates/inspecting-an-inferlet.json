@@ -1,0 +1,324 @@
+{
+  "entry": [
+    {
+      "label": "Rust",
+      "language": "rust",
+      "path": "examples/beam-search/src/lib.rs",
+      "start": 19,
+      "end": 41
+    },
+    {
+      "label": "Python",
+      "language": "python",
+      "path": "examples/beam-search-py/main.py",
+      "start": 17,
+      "end": 42
+    },
+    {
+      "label": "JavaScript",
+      "language": "javascript",
+      "path": "examples/beam-search-js/index.js",
+      "start": 13,
+      "end": 23
+    }
+  ],
+  "validation": [
+    {
+      "label": "Rust",
+      "language": "rust",
+      "path": "examples/beam-search/src/lib.rs",
+      "start": 75,
+      "end": 116
+    },
+    {
+      "label": "Python",
+      "language": "python",
+      "path": "examples/beam-search-py/main.py",
+      "start": 53,
+      "end": 68
+    },
+    {
+      "label": "JavaScript",
+      "language": "javascript",
+      "path": "examples/beam-search-js/index.js",
+      "start": 35,
+      "end": 46
+    }
+  ],
+  "pool": [
+    {
+      "label": "Rust",
+      "language": "rust",
+      "path": "examples/beam-search/src/lib.rs",
+      "start": 120,
+      "end": 134
+    },
+    {
+      "label": "Python",
+      "language": "python",
+      "path": "examples/beam-search-py/main.py",
+      "start": 72,
+      "end": 78
+    },
+    {
+      "label": "JavaScript",
+      "language": "javascript",
+      "path": "examples/beam-search-js/index.js",
+      "start": 50,
+      "end": 57
+    }
+  ],
+  "channels": [
+    {
+      "label": "Rust",
+      "language": "rust",
+      "path": "examples/beam-search/src/lib.rs",
+      "start": 137,
+      "end": 176
+    },
+    {
+      "label": "Python",
+      "language": "python",
+      "path": "examples/beam-search-py/main.py",
+      "start": 81,
+      "end": 98
+    },
+    {
+      "label": "JavaScript",
+      "language": "javascript",
+      "path": "examples/beam-search-js/index.js",
+      "start": 60,
+      "end": 77
+    }
+  ],
+  "ports": [
+    {
+      "label": "Rust",
+      "language": "rust",
+      "path": "examples/beam-search/src/lib.rs",
+      "start": 185,
+      "end": 187
+    },
+    {
+      "label": "Python",
+      "language": "python",
+      "path": "examples/beam-search-py/main.py",
+      "start": 101,
+      "end": 101
+    },
+    {
+      "label": "JavaScript",
+      "language": "javascript",
+      "path": "examples/beam-search-js/index.js",
+      "start": 80,
+      "end": 80
+    }
+  ],
+  "binding": [
+    {
+      "label": "Rust",
+      "language": "rust",
+      "path": "examples/beam-search/src/lib.rs",
+      "start": 189,
+      "end": 238
+    },
+    {
+      "label": "Python",
+      "language": "python",
+      "path": "examples/beam-search-py/main.py",
+      "start": 103,
+      "end": 125
+    },
+    {
+      "label": "JavaScript",
+      "language": "javascript",
+      "path": "examples/beam-search-js/index.js",
+      "start": 82,
+      "end": 96
+    }
+  ],
+  "ranking": [
+    {
+      "label": "Rust",
+      "language": "rust",
+      "path": "examples/beam-search/src/lib.rs",
+      "start": 239,
+      "end": 248
+    },
+    {
+      "label": "Python",
+      "language": "python",
+      "path": "examples/beam-search-py/main.py",
+      "start": 127,
+      "end": 135
+    },
+    {
+      "label": "JavaScript",
+      "language": "javascript",
+      "path": "examples/beam-search-js/index.js",
+      "start": 98,
+      "end": 105
+    }
+  ],
+  "ancestry": [
+    {
+      "label": "Rust",
+      "language": "rust",
+      "path": "examples/beam-search/src/lib.rs",
+      "start": 251,
+      "end": 262
+    },
+    {
+      "label": "Python",
+      "language": "python",
+      "path": "examples/beam-search-py/main.py",
+      "start": 138,
+      "end": 148
+    },
+    {
+      "label": "JavaScript",
+      "language": "javascript",
+      "path": "examples/beam-search-js/index.js",
+      "start": 108,
+      "end": 118
+    }
+  ],
+  "geometry": [
+    {
+      "label": "Rust",
+      "language": "rust",
+      "path": "examples/beam-search/src/lib.rs",
+      "start": 265,
+      "end": 294
+    },
+    {
+      "label": "Python",
+      "language": "python",
+      "path": "examples/beam-search-py/main.py",
+      "start": 151,
+      "end": 170
+    },
+    {
+      "label": "JavaScript",
+      "language": "javascript",
+      "path": "examples/beam-search-js/index.js",
+      "start": 121,
+      "end": 140
+    }
+  ],
+  "publish": [
+    {
+      "label": "Rust",
+      "language": "rust",
+      "path": "examples/beam-search/src/lib.rs",
+      "start": 296,
+      "end": 301
+    },
+    {
+      "label": "Python",
+      "language": "python",
+      "path": "examples/beam-search-py/main.py",
+      "start": 172,
+      "end": 176
+    },
+    {
+      "label": "JavaScript",
+      "language": "javascript",
+      "path": "examples/beam-search-js/index.js",
+      "start": 142,
+      "end": 147
+    }
+  ],
+  "hypotheses": [
+    {
+      "label": "Rust",
+      "language": "rust",
+      "path": "examples/beam-search/src/lib.rs",
+      "start": 44,
+      "end": 73
+    },
+    {
+      "label": "Python",
+      "language": "python",
+      "path": "examples/beam-search-py/main.py",
+      "start": 45,
+      "end": 50
+    },
+    {
+      "label": "JavaScript",
+      "language": "javascript",
+      "path": "examples/beam-search-js/index.js",
+      "start": 25,
+      "end": 33
+    }
+  ],
+  "attention-loop": [
+    {
+      "label": "Rust",
+      "language": "rust",
+      "path": "examples/beam-search/src/lib.rs",
+      "start": 305,
+      "end": 332
+    },
+    {
+      "label": "Python",
+      "language": "python",
+      "path": "examples/beam-search-py/main.py",
+      "start": 178,
+      "end": 199
+    },
+    {
+      "label": "JavaScript",
+      "language": "javascript",
+      "path": "examples/beam-search-js/index.js",
+      "start": 149,
+      "end": 168
+    }
+  ],
+  "hybrid-loop": [
+    {
+      "label": "Rust",
+      "language": "rust",
+      "path": "examples/beam-search/src/lib.rs",
+      "start": 333,
+      "end": 375
+    },
+    {
+      "label": "Python",
+      "language": "python",
+      "path": "examples/beam-search-py/main.py",
+      "start": 200,
+      "end": 207
+    },
+    {
+      "label": "JavaScript",
+      "language": "javascript",
+      "path": "examples/beam-search-js/index.js",
+      "start": 169,
+      "end": 178
+    }
+  ],
+  "result": [
+    {
+      "label": "Rust",
+      "language": "rust",
+      "path": "examples/beam-search/src/lib.rs",
+      "start": 377,
+      "end": 400
+    },
+    {
+      "label": "Python",
+      "language": "python",
+      "path": "examples/beam-search-py/main.py",
+      "start": 211,
+      "end": 221
+    },
+    {
+      "label": "JavaScript",
+      "language": "javascript",
+      "path": "examples/beam-search-js/index.js",
+      "start": 182,
+      "end": 189
+    }
+  ]
+}

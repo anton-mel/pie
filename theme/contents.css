@@ -1,0 +1,15 @@
+/* The contents page uses mdBook’s normal typography and theme colors. */
+.book-contents .chapter-list {
+  padding-left: 2.8rem;
+}
+.book-contents .chapter-list li,
+.book-contents .reading-path li {
+  margin-bottom: .8em;
+}
+.book-contents #all-chapters,
+.book-contents #recommended-path {
+  scroll-margin-top: 70px;
+}
+@media print {
+  .book-contents .chapter-list li { break-inside: avoid; }
+}

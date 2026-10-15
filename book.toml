@@ -1,0 +1,14 @@
+[book]
+title = "Pie: A programmable LLM serving system."
+authors = ["Pie tutorial contributors"]
+language = "en"
+src = "docs"
+
+[output.html]
+site-url = "/pie/"
+git-repository-url = "https://github.com/anton-mel/pie"
+additional-css = ["theme/source-viewer.css", "theme/contents.css", "theme/inspection.css"]
+additional-js = ["theme/source-viewer.js"]
+
+[output.html.playground]
+runnable = false
